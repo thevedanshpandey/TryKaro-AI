@@ -1,0 +1,9 @@
+{
+  "name": "TryKaro AI",
+  "description": "The ultimate AI-powered virtual try-on and wardrobe assistant using Gemini Nano Banana models.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
