@@ -2,18 +2,21 @@
 import React, { useState, useEffect } from 'react';
 import { Icons } from '../constants';
 
-// Fixed Bottom Banner Ad
+// Fixed Bottom Banner Ad -> Converted to Inline Card
 export const BannerAd: React.FC<{ unitId: string }> = ({ unitId }) => {
   return (
-    <div className="fixed bottom-[60px] left-0 right-0 z-40 bg-[#202124] h-[50px] flex items-center justify-between px-4 border-t border-gray-700 shadow-lg animate-in slide-in-from-bottom-2">
-      <div className="flex flex-col">
-        <span className="text-[10px] bg-[#fbc02d] text-black font-bold px-1 rounded-sm w-fit">Ad</span>
+    <div className="w-full bg-[#202124] min-h-[60px] flex items-center justify-between px-4 border border-gray-700 shadow-lg rounded-xl my-6 animate-in fade-in zoom-in-95 relative overflow-hidden group">
+      {/* Glossy Effect */}
+      <div className="absolute top-0 left-0 w-full h-full bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+      
+      <div className="flex flex-col z-10">
+        <span className="text-[10px] bg-[#fbc02d] text-black font-bold px-1 rounded-sm w-fit mb-0.5">Ad</span>
         <span className="text-[8px] text-gray-400">Google AdMob</span>
       </div>
-      <div className="flex-1 text-center">
-         <p className="text-[10px] text-gray-300 font-mono">ID: ...{unitId.slice(-8)}</p>
+      <div className="flex-1 text-center px-2 z-10">
+         <p className="text-[10px] text-gray-300 font-mono">Sponsored Content</p>
       </div>
-      <button className="text-gray-500 hover:text-white">
+      <button className="text-gray-500 hover:text-white z-10">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
       </button>
     </div>

@@ -35,6 +35,7 @@ const WardrobeBuilder: React.FC<Props> = ({ onBack, onSaveItem }) => {
   });
   const [plan, setPlan] = useState<WardrobePlan | null>(null);
   const [loading, setLoading] = useState(false);
+  const [savedItemIndices, setSavedItemIndices] = useState<Set<number>>(new Set());
 
   const handleInputChange = (value: string) => {
     const fieldId = QUESTIONS[currentStep].id;
@@ -50,12 +51,26 @@ const WardrobeBuilder: React.FC<Props> = ({ onBack, onSaveItem }) => {
       try {
         const result = await generateWardrobePlan(formData);
         setPlan(result);
+        setSavedItemIndices(new Set()); // Reset saved state for new plan
       } catch (e) {
         alert("Couldn't generate plan. Please try again.");
       } finally {
         setLoading(false);
       }
     }
+  };
+
+  const handleSaveClick = (item: any, idx: number) => {
+      onSaveItem({
+          id: Date.now().toString() + idx,
+          name: item.name,
+          price: item.price,
+          link: item.link,
+          image_keyword: item.image_keyword,
+          timestamp: Date.now()
+      });
+      // Update local state to show filled heart
+      setSavedItemIndices(prev => new Set(prev).add(idx));
   };
 
   const progress = ((currentStep + 1) / QUESTIONS.length) * 100;
@@ -113,134 +128,132 @@ const WardrobeBuilder: React.FC<Props> = ({ onBack, onSaveItem }) => {
   // ---------------- RESULT VIEW ---------------- //
   if (plan) {
     return (
-      <div className="min-h-screen p-4 max-w-md mx-auto pb-24">
-         <header className="flex items-center mb-6 gap-4 sticky top-0 bg-black/80 backdrop-blur-md py-4 z-10 border-b border-gray-800">
+      <div className="min-h-screen p-4 w-full max-w-5xl mx-auto pb-24">
+         <header className="flex items-center mb-8 gap-4 sticky top-0 bg-black/80 backdrop-blur-md py-4 z-10 border-b border-gray-800">
             <button onClick={() => setPlan(null)} className="text-gray-400 hover:text-white">← Back</button>
-            <h1 className="text-xl font-bold text-neon">Your Plan</h1>
+            <h1 className="text-2xl font-bold text-neon">Your Plan</h1>
          </header>
 
-         {/* Summary Card */}
-         <div className="bg-gradient-to-br from-gray-900 to-black p-5 rounded-2xl border border-neon/30 mb-6 shadow-lg">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-bold text-white">📌 Wardrobe Summary</h2>
-                <Icons.Sparkles />
-            </div>
-            <div className="space-y-2 text-sm">
-                <div className="flex justify-between border-b border-gray-800 pb-2">
-                    <span className="text-gray-400">Total Budget</span>
-                    <span className="font-bold text-neon">{plan.summary.totalBudget}</span>
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+             {/* Summary Card */}
+             <div className="bg-gradient-to-br from-gray-900 to-black p-6 rounded-2xl border border-neon/30 shadow-lg">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-white">📌 Wardrobe Summary</h2>
+                    <Icons.Sparkles />
                 </div>
-                <div className="flex justify-between border-b border-gray-800 pb-2">
-                    <span className="text-gray-400">Style</span>
-                    <span className="text-white">{plan.summary.style}</span>
+                <div className="space-y-3 text-sm">
+                    <div className="flex justify-between border-b border-gray-800 pb-2">
+                        <span className="text-gray-400">Total Budget</span>
+                        <span className="font-bold text-neon">{plan.summary.totalBudget}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-gray-800 pb-2">
+                        <span className="text-gray-400">Style</span>
+                        <span className="text-white">{plan.summary.style}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-400">Purpose</span>
+                        <span className="text-white">{plan.summary.purpose}</span>
+                    </div>
                 </div>
-                <div className="flex justify-between">
-                    <span className="text-gray-400">Purpose</span>
-                    <span className="text-white">{plan.summary.purpose}</span>
-                </div>
-            </div>
-         </div>
+             </div>
 
-         {/* Budget Breakdown */}
-         <div className="bg-card p-5 rounded-2xl border border-gray-800 mb-6">
-            <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                🧩 Budget Breakdown
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-900 p-3 rounded-xl text-center">
-                    <span className="block text-gray-400 text-xs mb-1">Tops</span>
-                    <span className="font-bold text-white">₹{plan.breakdown.tops}</span>
+             {/* Budget Breakdown */}
+             <div className="bg-card p-6 rounded-2xl border border-gray-800">
+                <h3 className="font-bold text-white mb-6 flex items-center gap-2 text-xl">
+                    🧩 Budget Breakdown
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="bg-gray-900 p-4 rounded-xl text-center">
+                        <span className="block text-gray-400 text-xs mb-1 uppercase tracking-wide">Tops</span>
+                        <span className="font-bold text-white">₹{plan.breakdown.tops}</span>
+                    </div>
+                    <div className="bg-gray-900 p-4 rounded-xl text-center">
+                        <span className="block text-gray-400 text-xs mb-1 uppercase tracking-wide">Bottoms</span>
+                        <span className="font-bold text-white">₹{plan.breakdown.bottoms}</span>
+                    </div>
+                    <div className="bg-gray-900 p-4 rounded-xl text-center">
+                        <span className="block text-gray-400 text-xs mb-1 uppercase tracking-wide">Shoes</span>
+                        <span className="font-bold text-white">₹{plan.breakdown.shoes}</span>
+                    </div>
+                    <div className="bg-gray-900 p-4 rounded-xl text-center">
+                        <span className="block text-gray-400 text-xs mb-1 uppercase tracking-wide">Accs</span>
+                        <span className="font-bold text-white">₹{plan.breakdown.accessories}</span>
+                    </div>
                 </div>
-                <div className="bg-gray-900 p-3 rounded-xl text-center">
-                    <span className="block text-gray-400 text-xs mb-1">Bottoms</span>
-                    <span className="font-bold text-white">₹{plan.breakdown.bottoms}</span>
+                <div className="mt-6 pt-4 border-t border-gray-800 flex justify-between items-center">
+                    <span className="text-sm text-gray-400">Total Estimated</span>
+                    <span className="text-xl font-bold text-green-400">₹{plan.breakdown.totalSpent}</span>
                 </div>
-                <div className="bg-gray-900 p-3 rounded-xl text-center">
-                    <span className="block text-gray-400 text-xs mb-1">Shoes</span>
-                    <span className="font-bold text-white">₹{plan.breakdown.shoes}</span>
-                </div>
-                <div className="bg-gray-900 p-3 rounded-xl text-center">
-                    <span className="block text-gray-400 text-xs mb-1">Accessories</span>
-                    <span className="font-bold text-white">₹{plan.breakdown.accessories}</span>
-                </div>
-            </div>
-            <div className="mt-4 pt-4 border-t border-gray-800 flex justify-between items-center">
-                <span className="text-sm text-gray-400">Total Estimated</span>
-                <span className="text-lg font-bold text-green-400">₹{plan.breakdown.totalSpent}</span>
-            </div>
+             </div>
          </div>
 
          {/* Shopping Items */}
-         <h3 className="font-bold text-white mb-4 px-1 text-lg">👕 Essential Items to Buy</h3>
-         <div className="space-y-4 mb-8">
-            {plan.items.map((item, idx) => (
-                <div key={idx} className="bg-card rounded-xl overflow-hidden border border-gray-800 flex flex-col group">
-                    <div className="h-40 bg-gray-800 relative overflow-hidden">
-                        {/* Placeholder image based on keyword */}
-                        <img 
-                            src={`https://source.unsplash.com/random/400x300/?fashion,${encodeURIComponent(item.image_keyword || item.name)}`} 
-                            className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500"
-                            alt={item.name}
-                            onError={(e) => {
-                                (e.target as HTMLImageElement).src = `https://placehold.co/400x300/1a1a1a/FFF?text=${encodeURIComponent(item.name)}`;
-                            }}
-                        />
-                        <div className="absolute top-2 right-2 bg-black/70 text-white text-xs font-bold px-2 py-1 rounded backdrop-blur-md">
-                            {item.price}
+         <h3 className="font-bold text-white mb-6 px-1 text-2xl">👕 Essential Items to Buy</h3>
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+            {plan.items.map((item, idx) => {
+                const isSaved = savedItemIndices.has(idx);
+                return (
+                    <div key={idx} className="bg-card rounded-2xl overflow-hidden border border-gray-800 flex flex-col group hover:border-gray-600 transition-colors">
+                        <div className="h-48 bg-gray-800 relative overflow-hidden">
+                            {/* Placeholder image based on keyword */}
+                            <img 
+                                src={`https://source.unsplash.com/random/400x300/?fashion,${encodeURIComponent(item.image_keyword || item.name)}`} 
+                                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500"
+                                alt={item.name}
+                                onError={(e) => {
+                                    (e.target as HTMLImageElement).src = `https://placehold.co/400x300/1a1a1a/FFF?text=${encodeURIComponent(item.name)}`;
+                                }}
+                            />
+                            <div className="absolute top-2 right-2 bg-black/70 text-white text-xs font-bold px-3 py-1.5 rounded backdrop-blur-md">
+                                {item.price}
+                            </div>
+                        </div>
+                        <div className="p-5 flex-1 flex flex-col">
+                            <div className="flex justify-between items-start mb-4">
+                                <h4 className="font-bold text-white text-lg line-clamp-1">{item.name}</h4>
+                                <span className="text-[10px] bg-green-900/50 text-green-400 border border-green-500/30 px-2 py-0.5 rounded flex items-center gap-1 shrink-0">
+                                    ✓ Verified
+                                </span>
+                            </div>
+                            
+                            <div className="mt-auto grid grid-cols-4 gap-2">
+                                <a 
+                                    href={item.link} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="col-span-3 bg-white text-black text-center text-sm font-bold py-3 rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center"
+                                >
+                                    Buy Now
+                                </a>
+                                <button 
+                                    onClick={() => handleSaveClick(item, idx)}
+                                    className={`border rounded-xl flex items-center justify-center transition-all ${isSaved ? 'bg-neon border-neon text-white shadow-[0_0_10px_rgba(255,42,109,0.5)]' : 'bg-gray-800 text-neon border-gray-700 hover:bg-gray-700 hover:border-neon'}`}
+                                >
+                                    {isSaved ? <Icons.HeartFilled /> : <Icons.Heart />}
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-center text-gray-500 mt-3">Found on Amazon/Flipkart/Myntra</p>
                         </div>
                     </div>
-                    <div className="p-4">
-                        <div className="flex justify-between items-start">
-                            <h4 className="font-bold text-white mb-1 line-clamp-1">{item.name}</h4>
-                            <span className="text-[10px] bg-green-900/50 text-green-400 border border-green-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
-                                ✓ Verified Link
-                            </span>
-                        </div>
-                        
-                        <div className="grid grid-cols-4 gap-2 mt-3">
-                            <a 
-                                href={item.link} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="col-span-3 bg-white text-black text-center text-sm font-bold py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-                            >
-                                Buy Now
-                            </a>
-                            <button 
-                                onClick={() => onSaveItem({
-                                    id: Date.now().toString() + idx,
-                                    name: item.name,
-                                    price: item.price,
-                                    link: item.link,
-                                    image_keyword: item.image_keyword,
-                                    timestamp: Date.now()
-                                })}
-                                className="bg-gray-800 text-neon border border-gray-700 rounded-lg flex items-center justify-center hover:bg-gray-700 hover:border-neon transition-all"
-                            >
-                                <Icons.Heart />
-                            </button>
-                        </div>
-                        <p className="text-[10px] text-center text-gray-500 mt-2">Found on Amazon/Flipkart/Myntra</p>
-                    </div>
-                </div>
-            ))}
+                );
+            })}
          </div>
 
          {/* Outfit Ideas */}
-         <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
-            <h3 className="font-bold text-white mb-6 text-lg">🥼 Outfit Combinations</h3>
-            <div className="space-y-6">
+         <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800">
+            <h3 className="font-bold text-white mb-8 text-xl">🥼 Outfit Combinations</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {plan.outfits.map((outfit, idx) => (
                     <div key={idx} className="relative pl-6 border-l-2 border-neon/30 pb-2">
                         <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-black border-2 border-neon"></div>
-                        <h4 className="font-bold text-neon text-sm mb-1">{outfit.name}</h4>
+                        <h4 className="font-bold text-neon text-md mb-2">{outfit.name}</h4>
                         <p className="text-sm text-gray-300 leading-relaxed">{outfit.description}</p>
                     </div>
                 ))}
             </div>
          </div>
 
-         <div className="mt-8 text-center">
+         <div className="mt-12 text-center">
              <Button variant="outline" onClick={() => setPlan(null)}>Start New Plan</Button>
          </div>
       </div>
@@ -249,32 +262,32 @@ const WardrobeBuilder: React.FC<Props> = ({ onBack, onSaveItem }) => {
 
   // ---------------- QUESTIONNAIRE VIEW ---------------- //
   return (
-    <div className="min-h-screen p-4 max-w-md mx-auto pb-20 flex flex-col">
+    <div className="min-h-screen p-4 w-full max-w-5xl mx-auto pb-20 flex flex-col">
       <header className="flex items-center mb-6 gap-4">
         <button onClick={onBack} className="text-gray-400 hover:text-white">←</button>
         <h1 className="text-xl font-bold">Smart Wardrobe</h1>
       </header>
 
       {/* Progress Bar */}
-      <div className="w-full bg-gray-800 h-1 rounded-full mb-8">
+      <div className="w-full bg-gray-800 h-1.5 rounded-full mb-10 max-w-xl mx-auto">
         <div 
             className="bg-neon h-full rounded-full transition-all duration-300 ease-out" 
             style={{ width: `${progress}%` }}
         ></div>
       </div>
 
-      <div className="flex-1 flex flex-col justify-center">
-        <div className="mb-2 text-neon font-bold text-sm tracking-wider">
+      <div className="flex-1 flex flex-col justify-center max-w-xl mx-auto w-full">
+        <div className="mb-3 text-neon font-bold text-xs tracking-widest uppercase">
             QUESTION {currentStep + 1} OF {QUESTIONS.length}
         </div>
-        <h2 className="text-2xl font-bold text-white mb-6 leading-tight">
+        <h2 className="text-3xl font-bold text-white mb-8 leading-tight">
             {currentQuestion.label}
         </h2>
 
         {renderInput()}
       </div>
 
-      <div className="mt-8">
+      <div className="mt-12 max-w-xl mx-auto w-full">
         <Button 
             fullWidth 
             onClick={handleNext}

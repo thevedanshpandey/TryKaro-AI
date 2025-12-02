@@ -1,5 +1,5 @@
 {
-  "name": "TryKaro AI",
+  "name": "TryKaro AI original",
   "description": "The ultimate AI-powered virtual try-on and wardrobe assistant using Gemini Nano Banana models.",
   "requestFramePermissions": [
     "camera",

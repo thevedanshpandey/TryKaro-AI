@@ -1,6 +1,7 @@
 
 export enum View {
   ONBOARDING = 'ONBOARDING',
+  SUBSCRIPTION = 'SUBSCRIPTION',
   HOME = 'HOME',
   TRY_ON = 'TRY_ON',
   WARDROBE = 'WARDROBE',
@@ -20,6 +21,7 @@ export interface SavedWardrobeItem {
 }
 
 export interface UserProfile {
+  // Core Profile (from /users)
   name: string;
   city: string;
   gender: string;
@@ -28,9 +30,17 @@ export interface UserProfile {
   weight: string;
   bodyShape: string;
   skinTone: number; // 1-20
-  avatarImage: string | null; // Base64
-  hasPremium: boolean;
-  tokens: number; // New: Token system
+  avatarImage: string | null; // Base64 or URL
+  
+  // Subscription Data (from /subscriptions)
+  planType: 'Free' | 'Monthly_99' | 'Monthly_299';
+  priceTier: 0 | 99 | 299;
+  tokens: number; // For Free tier (50 start, -25 per try)
+  tryOnLimit: number; // Total limit logic if needed
+  tryOnUsed: number; // Counter for usage
+  hasPremiumFeatures: boolean; // True only for Monthly_299
+
+  // User Content (Loaded Separately)
   savedLooks?: GeneratedLook[];
   wardrobeAnalysis?: PdfAnalysisResult | null;
   savedItems?: SavedWardrobeItem[];
@@ -47,7 +57,7 @@ export interface ClothingItem {
 
 export interface GeneratedLook {
   id: string;
-  image: string; // Base64
+  image: string; // Base64 or URL
   description: string;
   timestamp: number;
 }
@@ -95,7 +105,7 @@ export interface DailyOutfitResult {
     description: string;
     reasoning: string;
     visualPrompt: string; // Description for image generation
-    image?: string; // Base64 of the generated outfit
+    image?: string; // Base64 or URL of the generated outfit
     careInstructions?: string; 
     comfortRating?: number; 
   }>;

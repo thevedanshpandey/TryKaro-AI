@@ -4,6 +4,7 @@ import { UserProfile } from '../types';
 import { BODY_SHAPES, OCCUPATIONS } from '../constants';
 import { Button } from './Button';
 import { Icons } from '../constants';
+import { ImageCropper } from './ImageCropper';
 
 interface OnboardingProps {
   onComplete: (profile: UserProfile) => void;
@@ -21,6 +22,11 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
   const [bodyShape, setBodyShape] = useState(BODY_SHAPES[0]);
   const [skinTone, setSkinTone] = useState(10);
   const [avatarImage, setAvatarImage] = useState<string | null>(null);
+  
+  // Cropper State
+  const [rawImage, setRawImage] = useState<string | null>(null);
+  const [isCropping, setIsCropping] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -28,18 +34,29 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setAvatarImage(reader.result as string);
+        setRawImage(reader.result as string);
+        setIsCropping(true);
       };
       reader.readAsDataURL(file);
     }
   };
 
+  const handleCropComplete = (croppedBase64: string) => {
+      setAvatarImage(croppedBase64);
+      setIsCropping(false);
+      setRawImage(null);
+  };
+
   const handleAvatarClick = () => {
-    alert("⚠️ IMPORTANT: Please upload a clear selfie where your face is fully visible. Avoid masks, sunglasses, or heavy shadows for the best Try-On results!");
+    if (!avatarImage) {
+        alert("⚠️ IMPORTANT: Please upload a clear selfie where your face is fully visible. Avoid masks, sunglasses, or heavy shadows for the best Try-On results!");
+    }
     fileInputRef.current?.click();
   };
 
   const handleSubmit = () => {
+    // Provide defaults for subscription fields to satisfy UserProfile type.
+    // These values will be overwritten in App.tsx with actual subscription data if available.
     const profile: UserProfile = {
       name,
       city,
@@ -49,12 +66,27 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
       weight,
       bodyShape,
       skinTone,
-      avatarImage,
-      hasPremium: false,
-      tokens: 50 // New user bonus
+      avatarImage, // Will be base64 string
+      planType: 'Free',
+      priceTier: 0,
+      tokens: 50,
+      tryOnLimit: 2,
+      tryOnUsed: 0,
+      hasPremiumFeatures: false,
     };
     onComplete(profile);
   };
+
+  // If Cropping Mode is Active
+  if (isCropping && rawImage) {
+      return (
+          <ImageCropper 
+             imageSrc={rawImage}
+             onCancel={() => { setIsCropping(false); setRawImage(null); }}
+             onCropComplete={handleCropComplete}
+          />
+      );
+  }
 
   const renderStep1 = () => (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -157,10 +189,15 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
       <div className="flex justify-center my-2">
         <div 
           onClick={handleAvatarClick}
-          className={`relative w-28 h-28 rounded-full border-2 border-dashed flex items-center justify-center cursor-pointer overflow-hidden transition-colors ${avatarImage ? 'border-neon' : 'border-gray-600 bg-gray-800'}`}
+          className={`relative w-28 h-28 rounded-full border-2 border-dashed flex items-center justify-center cursor-pointer overflow-hidden transition-colors group ${avatarImage ? 'border-neon' : 'border-gray-600 bg-gray-800'}`}
         >
           {avatarImage ? (
-            <img src={avatarImage} alt="Avatar" className="w-full h-full object-cover" />
+            <>
+                <img src={avatarImage} alt="Avatar" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-xs text-white">Change</span>
+                </div>
+            </>
           ) : (
             <div className="text-center p-2 text-gray-400">
               <Icons.Camera />
@@ -244,9 +281,20 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-black">
-      <div className="w-full max-w-md">
-        {step === 1 ? renderStep1() : step === 2 ? renderStep2() : renderStep3()}
+    <div className="min-h-screen bg-black flex flex-col justify-center p-6">
+      <div className="w-full max-w-md mx-auto">
+        {step === 1 && renderStep1()}
+        {step === 2 && renderStep2()}
+        {step === 3 && renderStep3()}
+      </div>
+      
+      <div className="mt-8 flex justify-center gap-2">
+        {[1, 2, 3].map(i => (
+          <div 
+            key={i}
+            className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'w-8 bg-neon' : 'w-2 bg-gray-700'}`}
+          />
+        ))}
       </div>
     </div>
   );

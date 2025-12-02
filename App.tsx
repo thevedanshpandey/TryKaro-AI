@@ -1,351 +1,591 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, UserProfile, GeneratedLook, PdfAnalysisResult, SavedWardrobeItem } from './types';
-import { Button } from './components/Button';
 import { Icons, AD_UNITS } from './constants';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { BannerAd, RewardedAd } from './components/AdComponents';
+import { saveUserProfileToStorage, loadUserProfileFromStorage, loadUserHistoryFromStorage, deleteWardrobeFromStorage } from './services/storageAdapter';
+import { auth, onAuthStateChanged, User, signOut } from './firebaseConfig';
+import { VerifyEmail } from './components/VerifyEmail';
 
 // Views
+import AuthScreen from './components/AuthScreen';
 import Onboarding from './components/Onboarding';
 import PasteLinkTryOn from './components/PasteLinkTryOn';
 import WardrobeBuilder from './components/WardrobeBuilder';
 import DailyOutfit from './components/DailyOutfit';
 import Profile from './components/Profile';
 import PdfWardrobe from './components/PdfWardrobe';
+import SubscriptionScreen from './components/SubscriptionScreen';
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<View>(View.ONBOARDING);
+  const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [showRewardedAd, setShowRewardedAd] = useState(false);
+  const [currentView, setCurrentView] = useState<View>(View.ONBOARDING);
+  const [loading, setLoading] = useState(false);
+  
+  // Auth & Verification States
+  const [isAuthSuccess, setIsAuthSuccess] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const isSessionReadyRef = useRef(false);
 
-  // Mock checking for existing user
+  // Ad Reward State
+  const [showRewardedAd, setShowRewardedAd] = useState(false);
+  const [pendingTokenReward, setPendingTokenReward] = useState(0);
+
+  // Initial Sign Out to force clean state
   useEffect(() => {
-    // In a real app, check firebase auth here
-    const savedUser = localStorage.getItem('trykaro_user');
-    if (savedUser) {
-      const parsed = JSON.parse(savedUser);
-      // Ensure tokens exist for old users
-      if (parsed.tokens === undefined) parsed.tokens = 50;
-      setUserProfile(parsed);
-      setCurrentView(View.HOME);
-    }
+    const initSession = async () => {
+        console.log("Initializing App Session...");
+        await signOut(auth);
+        isSessionReadyRef.current = true;
+    };
+    initSession();
   }, []);
 
-  const handleOnboardingComplete = (profile: UserProfile) => {
-    setUserProfile(profile);
-    localStorage.setItem('trykaro_user', JSON.stringify(profile));
-    setCurrentView(View.HOME);
-  };
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!isSessionReadyRef.current) return;
 
-  const handleSignOut = () => {
-    localStorage.removeItem('trykaro_user');
-    setUserProfile(null);
-    setCurrentView(View.ONBOARDING);
-  };
+      setUser(currentUser);
+      if (currentUser) {
+        setLoading(true);
+        console.log("Auth State Changed: User Logged In", currentUser.uid);
+        
+        try {
+          // STEP 1: LOAD CORE PROFILE (Fast)
+          const profile = await loadUserProfileFromStorage(currentUser.uid);
+          
+          if (profile) {
+             console.log("Core Profile loaded:", profile);
+             setUserProfile(profile);
 
-  const handleUpdateProfile = (updated: Partial<UserProfile>) => {
-      if (!userProfile) return;
-      const newProfile = { ...userProfile, ...updated };
-      setUserProfile(newProfile);
-      localStorage.setItem('trykaro_user', JSON.stringify(newProfile));
-  };
+             // Check Completeness
+             const isProfileComplete = 
+                profile.city && profile.city !== "Unknown" && 
+                profile.height && profile.height !== "0" &&
+                profile.name && profile.name.length > 0;
+             
+             if (isProfileComplete) {
+                 console.log("✅ Profile Complete. -> HOME");
+                 setCurrentView(View.HOME);
 
-  const handleSaveLook = (look: GeneratedLook) => {
-    if (!userProfile) return;
-    const updatedProfile = {
-      ...userProfile,
-      savedLooks: [look, ...(userProfile.savedLooks || [])]
-    };
-    handleUpdateProfile(updatedProfile);
-  };
+                 // STEP 2: LOAD HISTORY IN BACKGROUND (Silent)
+                 console.log("Triggering background history sync...");
+                 loadUserHistoryFromStorage(currentUser.uid).then(history => {
+                     console.log("Background history loaded");
+                     setUserProfile(prev => prev ? ({ ...prev, ...history }) : null);
+                 });
 
-  const handleSaveWardrobe = (analysis: PdfAnalysisResult | null) => {
-    if (!userProfile) return;
-    const updatedProfile = {
-      ...userProfile,
-      wardrobeAnalysis: analysis
-    };
-    handleUpdateProfile(updatedProfile);
-  };
+             } else {
+                 console.log("⚠️ Profile Incomplete. Checking Plan...");
+                 setCurrentView(View.SUBSCRIPTION);
+             }
+          } else {
+            console.log("❌ No profile doc found. -> SUBSCRIPTION (Fallback)");
+            const fallbackProfile: UserProfile = {
+                name: currentUser.displayName || '',
+                city: 'Unknown',
+                gender: 'Not Set',
+                occupation: 'Not Set',
+                height: '0',
+                weight: '0',
+                bodyShape: 'Not Set',
+                skinTone: 1,
+                avatarImage: null,
+                planType: 'Free',
+                priceTier: 0,
+                tokens: 50,
+                tryOnLimit: 2,
+                tryOnUsed: 0,
+                hasPremiumFeatures: false
+            };
+            setUserProfile(fallbackProfile);
+            setCurrentView(View.SUBSCRIPTION);
+          }
+        } catch (error) {
+          console.error("Failed to load profile:", error);
+          setCurrentView(View.SUBSCRIPTION);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        console.log("Auth State Changed: User Logged Out");
+        setUserProfile(null);
+        setCurrentView(View.ONBOARDING);
+        setLoading(false);
+      }
+    });
 
-  const handleSaveWardrobeItem = (item: SavedWardrobeItem) => {
-    if (!userProfile) return;
-    const existingItems = userProfile.savedItems || [];
-    
-    // Prevent duplicates based on link
-    if (existingItems.some(i => i.link === item.link)) {
-        alert("This item is already in your wishlist!");
-        return;
+    return () => unsubscribe();
+  }, []);
+
+  const handleAuthSuccess = (isSignup: boolean) => {
+    setIsAuthSuccess(true);
+    if (isSignup) {
+        setShowVerifyModal(true);
     }
-
-    const updatedProfile = {
-        ...userProfile,
-        savedItems: [item, ...existingItems]
-    };
-    handleUpdateProfile(updatedProfile);
-    alert("Item added to your Wishlist!");
   };
 
-  const handleDeleteWardrobeItem = (id: string) => {
-      if (!userProfile || !userProfile.savedItems) return;
+  const handlePlanSelection = async (plan: 'Free' | 'Monthly_99' | 'Monthly_299') => {
+      if (!user) return;
       
+      setLoading(true);
+      
+      try {
+          const baseProfile = userProfile || {
+              name: user.displayName || '',
+              city: 'Unknown',
+              gender: 'Not Set',
+              occupation: 'Not Set',
+              height: '0',
+              weight: '0',
+              bodyShape: 'Not Set',
+              skinTone: 1,
+              avatarImage: null,
+              planType: 'Free',
+              priceTier: 0,
+              tokens: 50,
+              tryOnLimit: 2,
+              tryOnUsed: 0,
+              hasPremiumFeatures: false
+          };
+
+          let updatedProfile = { ...baseProfile, planType: plan };
+          
+          if (plan === 'Free') {
+              updatedProfile.priceTier = 0;
+              updatedProfile.tokens = 50;
+              updatedProfile.tryOnLimit = 2; 
+              updatedProfile.hasPremiumFeatures = false;
+          } else if (plan === 'Monthly_99') {
+              updatedProfile.priceTier = 99;
+              updatedProfile.tokens = 0; 
+              updatedProfile.tryOnLimit = 20; 
+              updatedProfile.hasPremiumFeatures = false; 
+          } else if (plan === 'Monthly_299') {
+              updatedProfile.priceTier = 299;
+              updatedProfile.tokens = 999999; 
+              updatedProfile.tryOnLimit = 999999; 
+              updatedProfile.hasPremiumFeatures = true; 
+          }
+
+          if (plan !== 'Free') {
+             await new Promise(resolve => setTimeout(resolve, 1500));
+             alert("Payment Successful! Plan Activated.");
+          }
+
+          await saveUserProfileToStorage(updatedProfile, user.uid);
+          setUserProfile(updatedProfile);
+
+          console.log("Plan selected:", plan, "-> Moving to Onboarding");
+          setCurrentView(View.ONBOARDING);
+      } catch (e) {
+          console.error("Plan selection failed:", e);
+          alert("Failed to update plan. Please try again.");
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const handleOnboardingComplete = async (data: UserProfile) => {
+    if (!user) return;
+    
+    const finalProfile = {
+        ...data,
+        planType: userProfile?.planType || 'Free',
+        priceTier: userProfile?.priceTier || 0,
+        tokens: userProfile?.tokens || 50,
+        tryOnLimit: userProfile?.tryOnLimit || 2,
+        tryOnUsed: userProfile?.tryOnUsed || 0,
+        hasPremiumFeatures: userProfile?.hasPremiumFeatures || false,
+        savedItems: [],
+        savedLooks: [],
+        wardrobeAnalysis: null
+    };
+
+    setUserProfile(finalProfile);
+    setCurrentView(View.HOME);
+    
+    setLoading(true);
+    try {
+        await saveUserProfileToStorage(finalProfile, user.uid);
+        console.log("Profile saved successfully after onboarding.");
+    } catch (e) {
+        console.error("Failed to save profile:", e);
+        alert("Failed to save profile. Please check your connection.");
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const handleSaveLook = async (look: GeneratedLook) => {
+    if (!userProfile || !user) return;
+    const updatedProfile = { 
+      ...userProfile, 
+      savedLooks: [look, ...(userProfile.savedLooks || [])] 
+    };
+    setUserProfile(updatedProfile);
+    await saveUserProfileToStorage(updatedProfile, user.uid);
+  };
+
+  const handleSaveWardrobeItem = async (item: SavedWardrobeItem) => {
+    if (!userProfile || !user) return;
+    const updatedProfile = { 
+      ...userProfile, 
+      savedItems: [item, ...(userProfile.savedItems || [])] 
+    };
+    setUserProfile(updatedProfile);
+    await saveUserProfileToStorage(updatedProfile, user.uid);
+  };
+
+  const handleSaveWardrobeAnalysis = async (analysis: PdfAnalysisResult | null) => {
+    if (!userProfile || !user) return;
+    const updatedProfile = { ...userProfile, wardrobeAnalysis: analysis };
+    setUserProfile(updatedProfile);
+    await saveUserProfileToStorage(updatedProfile, user.uid);
+  };
+
+  const handleDeleteWardrobe = async () => {
+      if (!userProfile || !user) return;
+      
+      setLoading(true);
+      try {
+          await deleteWardrobeFromStorage(user.uid);
+          const updatedProfile = { ...userProfile, wardrobeAnalysis: null };
+          setUserProfile(updatedProfile);
+      } catch (e) {
+          console.error(e);
+          alert("Failed to delete wardrobe. Please try again.");
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const handleDeleteItem = async (id: string) => {
+      if (!userProfile || !user) return;
       const updatedProfile = {
           ...userProfile,
-          savedItems: userProfile.savedItems.filter(item => item.id !== id)
+          savedItems: userProfile.savedItems?.filter(item => item.id !== id)
       };
-      handleUpdateProfile(updatedProfile);
+      setUserProfile(updatedProfile);
+      await saveUserProfileToStorage(updatedProfile, user.uid);
   };
 
-  const handleDeductTokens = (amount: number) => {
+  const handleUpdateAvatar = async (newAvatarBase64: string) => {
+      if (!userProfile || !user) return;
+      const updatedProfile = { ...userProfile, avatarImage: newAvatarBase64 };
+      setUserProfile(updatedProfile);
+      await saveUserProfileToStorage(updatedProfile, user.uid);
+  };
+
+  const handleDeductUsage = async (cost: number) => {
+      if (!userProfile || !user) return;
+      
+      const updatedProfile = { 
+          ...userProfile, 
+          tokens: userProfile.planType === 'Free' ? userProfile.tokens - cost : userProfile.tokens,
+          tryOnUsed: (userProfile.tryOnUsed || 0) + 1 
+      };
+      
+      setUserProfile(updatedProfile);
+      saveUserProfileToStorage(updatedProfile, user.uid);
+  };
+
+  const handleAdReward = async () => {
+      if (!userProfile || !user) return;
+      const updatedProfile = { ...userProfile, tokens: userProfile.tokens + pendingTokenReward };
+      setUserProfile(updatedProfile);
+      await saveUserProfileToStorage(updatedProfile, user.uid);
+      alert(`You earned ${pendingTokenReward} tokens!`);
+      setPendingTokenReward(0);
+      setShowRewardedAd(false);
+  };
+
+  const requestFeatureAccess = (view: View) => {
       if (!userProfile) return;
-      handleUpdateProfile({ tokens: Math.max(0, userProfile.tokens - amount) });
-  };
 
-  const handleWatchAd = () => {
-      setShowRewardedAd(true);
-  };
-
-  const handleAdReward = () => {
-      if (!userProfile) return;
-      handleUpdateProfile({ tokens: userProfile.tokens + 10 });
-      alert("🎉 You earned 10 Tokens!");
+      if (view === View.TRY_ON) {
+          setCurrentView(view);
+          return;
+      }
+      
+      if (userProfile.hasPremiumFeatures) {
+          setCurrentView(view);
+      } else {
+          alert("🔒 This feature is available in the Monthly Premium Plan (₹299). Upgrade to access unlimited features!");
+      }
   };
 
   const renderContent = () => {
+    if (!user) {
+        return <AuthScreen onSuccess={handleAuthSuccess} />;
+    }
+
+    if (loading) {
+        return <LoadingOverlay message="Syncing..." />;
+    }
+
+    if (showVerifyModal) {
+        return (
+            <VerifyEmail 
+                user={user} 
+                onSignOut={() => signOut(auth)} 
+                onCheckVerified={() => {
+                    user.reload().then(() => {
+                        if (user.emailVerified) {
+                            setShowVerifyModal(false);
+                        } else {
+                            alert("Email not verified yet. Check your inbox!");
+                        }
+                    });
+                }}
+            />
+        );
+    }
+
     switch (currentView) {
+      case View.SUBSCRIPTION:
+        return (
+            <SubscriptionScreen 
+                userProfile={userProfile!} 
+                onSelectPlan={handlePlanSelection} 
+                isLoading={loading} 
+            />
+        );
       case View.ONBOARDING:
         return <Onboarding onComplete={handleOnboardingComplete} />;
-      case View.TRY_ON:
-        return userProfile ? (
-            <PasteLinkTryOn 
-                user={userProfile} 
-                onBack={() => setCurrentView(View.HOME)} 
-                onSaveLook={handleSaveLook}
-                onDeductTokens={handleDeductTokens}
-            />
-        ) : null;
-      case View.WARDROBE:
-        return <WardrobeBuilder onBack={() => setCurrentView(View.HOME)} onSaveItem={handleSaveWardrobeItem} />;
-      case View.DAILY_OUTFIT:
-        return userProfile ? (
-            <DailyOutfit 
-                user={userProfile} 
-                onBack={() => setCurrentView(View.HOME)} 
-                onCreateWardrobe={() => setCurrentView(View.PDF_WARDROBE)}
-                onSaveLook={handleSaveLook}
-            />
-        ) : null;
-      case View.PROFILE:
-        return userProfile ? (
-            <Profile 
-                user={userProfile} 
-                onBack={() => setCurrentView(View.HOME)} 
-                onOpenWardrobe={() => setCurrentView(View.PDF_WARDROBE)}
-                onDeleteItem={handleDeleteWardrobeItem}
-            />
-        ) : null;
-      case View.PDF_WARDROBE:
-        return userProfile ? (
-            <PdfWardrobe 
-                user={userProfile} 
-                onBack={() => setCurrentView(View.HOME)} 
-                onSaveWardrobe={handleSaveWardrobe}
-                onSaveLook={handleSaveLook}
-            />
-        ) : null;
       case View.HOME:
-      default:
+        const hasValidAvatar = userProfile?.avatarImage && (userProfile.avatarImage.startsWith('data:') || userProfile.avatarImage.startsWith('http'));
+        const firstName = userProfile?.name?.split(' ')[0] || "Styler";
+        const isPremium = userProfile?.planType === 'Monthly_299';
+
         return (
-          <div className="p-4 space-y-6 max-w-md mx-auto pb-32">
-            {/* Header */}
-            <header className="flex justify-between items-center pt-2">
-              <div>
-                <h1 className="text-2xl font-bold text-white">Hi, {userProfile?.name}! 👋</h1>
-                <p className="text-gray-400 text-xs">Styling you for {userProfile?.city}</p>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                  {/* Token Counter */}
-                  <div 
-                    className="bg-gray-900 border border-gray-700 px-3 py-1.5 rounded-full flex items-center gap-2 cursor-pointer hover:bg-gray-800"
-                    onClick={handleWatchAd}
-                  >
-                      <span className="text-yellow-400 text-sm font-bold">🪙 {userProfile?.tokens}</span>
-                      <div className="w-4 h-4 bg-neon rounded-full flex items-center justify-center text-[8px] text-white font-bold">+</div>
-                  </div>
+          <div className="min-h-screen bg-black text-white font-sans overflow-x-hidden relative selection:bg-neon selection:text-white">
+             <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
+                <div className="absolute -top-20 -left-20 w-96 h-96 bg-neon/20 rounded-full blur-[128px] opacity-40 animate-pulse"></div>
+                <div className="absolute top-40 right-[-100px] w-72 h-72 bg-blue-600/20 rounded-full blur-[100px] opacity-30"></div>
+                <div className="absolute bottom-0 left-20 w-80 h-80 bg-purple-600/10 rounded-full blur-[100px] opacity-30"></div>
+             </div>
 
-                  {/* Avatar */}
-                  <div 
-                    className="w-10 h-10 rounded-full bg-gray-800 border border-neon overflow-hidden cursor-pointer"
-                    onClick={() => setCurrentView(View.PROFILE)}
-                  >
-                     {userProfile?.avatarImage ? (
-                         <img src={userProfile.avatarImage} className="w-full h-full object-cover" alt="avatar"/>
-                     ) : (
-                         <div className="w-full h-full flex items-center justify-center text-xs">You</div>
-                     )}
-                  </div>
-              </div>
-            </header>
+             <div className="relative z-10 w-full max-w-5xl mx-auto p-5 pb-24 flex flex-col min-h-screen">
+                 
+                 <div className="flex justify-between items-center mb-6 pt-4 animate-in slide-in-from-top-4 duration-700">
+                   <div>
+                     <p className="text-gray-400 text-xs tracking-wider uppercase mb-1">Welcome back</p>
+                     <h1 className="text-3xl font-bold text-white tracking-tight">
+                       Hello, <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon to-purple-400">{firstName}</span>
+                     </h1>
+                   </div>
+                   <div 
+                      onClick={() => setCurrentView(View.PROFILE)}
+                      className="w-12 h-12 rounded-full p-[2px] bg-gradient-to-tr from-neon to-blue-500 cursor-pointer hover:scale-105 transition-transform shadow-[0_0_20px_rgba(255,42,109,0.3)]"
+                   >
+                     <div className="w-full h-full rounded-full overflow-hidden bg-black border-2 border-black">
+                        {hasValidAvatar ? (
+                           <img src={userProfile!.avatarImage!} className="w-full h-full object-cover" alt="Profile" />
+                        ) : (
+                           <div className="w-full h-full flex items-center justify-center bg-gray-800 text-white font-bold text-lg">
+                               {firstName[0]}
+                           </div>
+                        )}
+                     </div>
+                   </div>
+                 </div>
 
-            {/* HERO GRID - Highlight Create Wardrobe & Daily Outfit */}
-            <div className="grid grid-rows-2 gap-4">
-                
-                {/* 1. Create My Wardrobe (Large) */}
-                <div 
-                    onClick={() => setCurrentView(View.PDF_WARDROBE)}
-                    className="bg-gradient-to-br from-purple-900/80 to-black border border-purple-500/30 p-6 rounded-2xl relative overflow-hidden group cursor-pointer transition-all hover:scale-[1.02] min-h-[160px]"
-                >
-                    <div className="absolute right-0 bottom-0 opacity-20 transform translate-x-1/4 translate-y-1/4">
-                        <svg width="150" height="150" viewBox="0 0 24 24" fill="currentColor" className="text-purple-400">
-                            <path d="M20.38 3.4a2 2 0 0 0-1.2-1.1l-2.19-.55a.5.5 0 0 0-.38.27L15 4H9l-1.6-2a.5.5 0 0 0-.38-.27L4.82 2.3a2 2 0 0 0-1.2 1.1l-2 6a2 2 0 0 0 1.2 2.5l1.18.3v9.7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9.7l1.18-.3a2 2 0 0 0 1.2-2.5l-2-6Z"/>
-                        </svg>
-                    </div>
-                    <div className="relative z-10">
-                        <div className="p-2 bg-purple-500 w-fit rounded-lg mb-3 text-white"><Icons.Upload /></div>
-                        <h2 className="text-2xl font-bold text-white leading-tight mb-1">Create My<br/>Wardrobe</h2>
-                        <p className="text-purple-200 text-xs mt-2">Upload PDF & get styled instantly</p>
-                    </div>
-                </div>
-
-                {/* 2. Daily Outfit (Large) */}
-                <div 
-                    onClick={() => setCurrentView(View.DAILY_OUTFIT)}
-                    className="bg-gradient-to-br from-neon/80 to-pink-900 border border-neon/30 p-6 rounded-2xl relative overflow-hidden group cursor-pointer transition-all hover:scale-[1.02] min-h-[160px]"
-                >
-                    <div className="absolute right-0 bottom-0 opacity-20 transform translate-x-1/4 translate-y-1/4">
-                        <svg width="150" height="150" viewBox="0 0 24 24" fill="currentColor" className="text-pink-200">
-                             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                        </svg>
-                    </div>
-                    <div className="relative z-10">
-                        <div className="p-2 bg-white text-neon w-fit rounded-lg mb-3"><Icons.Zap /></div>
-                        <h2 className="text-2xl font-bold text-white leading-tight mb-1">Daily Outfit<br/>Suggestion</h2>
-                        <p className="text-pink-100 text-xs mt-2">Weather-matched looks for today</p>
-                    </div>
-                </div>
-            </div>
-
-            <h3 className="text-gray-400 font-bold text-sm px-1 uppercase tracking-wider mt-2">Essentials</h3>
-
-            {/* Redesigned Secondary Grid */}
-            <div className="grid grid-cols-2 gap-4">
-                {/* 3. Link Try-On */}
-                <div 
-                    onClick={() => setCurrentView(View.TRY_ON)}
-                    className="bg-gradient-to-br from-gray-800 to-gray-900 p-5 rounded-2xl border border-gray-700 hover:border-blue-500 cursor-pointer transition-all group overflow-hidden relative h-40 flex flex-col justify-between"
-                >
-                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                         <Icons.Camera />
-                    </div>
-                    <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-900/50 mb-2">
-                        <Icons.Camera />
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-white text-lg">Virtual Try-On</h3>
-                        <p className="text-[10px] text-gray-400 mt-1">Paste Link & See Magic</p>
-                    </div>
-                    <div className="mt-2 text-[10px] bg-black/40 w-fit px-2 py-1 rounded text-blue-300 border border-blue-500/20">
-                         25 Tokens
-                    </div>
-                </div>
-
-                {/* 4. Smart Wardrobe (Shopping) */}
-                <div 
-                    onClick={() => setCurrentView(View.WARDROBE)}
-                    className="bg-gradient-to-br from-gray-800 to-gray-900 p-5 rounded-2xl border border-gray-700 hover:border-green-500 cursor-pointer transition-all group overflow-hidden relative h-40 flex flex-col justify-between"
-                >
-                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                         <Icons.Shirt />
-                    </div>
-                    <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-green-900/50 mb-2">
-                        <Icons.Shirt />
-                    </div>
-                     <div>
-                        <h3 className="font-bold text-white text-lg">Smart Shopper</h3>
-                        <p className="text-[10px] text-gray-400 mt-1">Budget Wardrobe Planner</p>
-                    </div>
-                    <div className="mt-2 text-[10px] bg-black/40 w-fit px-2 py-1 rounded text-green-300 border border-green-500/20">
-                         Free
-                    </div>
-                </div>
-            </div>
-
-            {/* Watch Ad Button */}
-            {!userProfile?.hasPremium && (
-                <div 
-                    onClick={handleWatchAd}
-                    className="bg-gray-900 p-4 rounded-xl border border-dashed border-gray-700 flex items-center justify-between cursor-pointer hover:bg-gray-800"
-                >
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-yellow-500/20 text-yellow-500 rounded-lg"><Icons.Video /></div>
-                        <div>
-                            <p className="font-bold text-white text-sm">Need Tokens?</p>
-                            <p className="text-xs text-gray-400">Watch ad to earn 10 tokens</p>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div 
+                        className={`relative overflow-hidden p-6 rounded-3xl border transition-all duration-300 group
+                                    ${isPremium 
+                                        ? 'bg-gradient-to-r from-gray-900 via-black to-gray-900 border-neon/50 shadow-[0_0_15px_rgba(255,42,109,0.1)]' 
+                                        : 'bg-gradient-to-br from-[#1a1a1a]/90 to-black/90 border-white/10'
+                                    }
+                                    hover:border-neon/60 hover:shadow-[0_0_25px_rgba(255,42,109,0.2)] hover:scale-[1.01] cursor-default
+                        `}
+                    >
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-neon/10 transition-colors duration-500"></div>
+                        
+                        <div className="flex justify-between items-center relative z-10 h-full">
+                            <div className="flex flex-col justify-center">
+                                <p className="text-gray-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                                    Current Plan 
+                                    {isPremium && <span className="text-neon bg-neon/10 px-2 py-0.5 rounded-full text-[8px] border border-neon/20">PRO</span>}
+                                </p>
+                                <h2 className="text-4xl font-black text-white flex items-baseline gap-2 tracking-tight">
+                                    {userProfile?.planType === 'Free' ? userProfile.tokens : (userProfile?.planType === 'Monthly_299' ? '∞' : (userProfile?.tryOnLimit || 0) - (userProfile?.tryOnUsed || 0))}
+                                    <span className="text-sm font-medium text-gray-400 self-end mb-1 ml-1">
+                                        {userProfile?.planType === 'Free' ? 'Tokens' : 'Try-Ons Left'}
+                                    </span>
+                                </h2>
+                            </div>
+                            
+                            {userProfile?.planType === 'Free' ? (
+                                <button 
+                                    onClick={() => { setShowRewardedAd(true); setPendingTokenReward(10); }}
+                                    className="bg-white/10 text-white text-xs font-bold px-5 py-3 rounded-full hover:bg-neon hover:text-white transition-all border border-white/10 active:scale-95 flex items-center gap-2 backdrop-blur-sm group-hover:bg-white/20"
+                                >
+                                    <Icons.Video />
+                                    <span>+ Free Tokens</span>
+                                </button>
+                            ) : (
+                                <div className="text-right">
+                                     <p className="text-xs text-gray-500 font-mono">RENEWAL</p>
+                                     <p className="text-sm text-white font-bold">Auto-Active</p>
+                                </div>
+                            )}
                         </div>
                     </div>
-                    <span className="bg-yellow-500 text-black text-xs font-bold px-3 py-1 rounded-full">+10</span>
-                </div>
-            )}
+                    
+                    {!isPremium && (
+                        <div className="hidden md:block">
+                            <BannerAd unitId={AD_UNITS.BANNER_HOME} />
+                        </div>
+                    )}
+                 </div>
 
-            {/* Subscription Banner */}
-            <div className="bg-gradient-to-r from-gray-900 to-gray-800 p-4 rounded-xl border border-gray-700 flex items-center justify-between mt-4">
-                <div>
-                    <p className="font-bold text-white text-sm">TryKaro Premium</p>
-                    <p className="text-xs text-gray-400">Unlock unlimited styling</p>
-                </div>
-                <button className="bg-white text-black text-xs font-bold py-2 px-4 rounded-full">
-                    ₹299/mo
-                </button>
-            </div>
-            
-            <div className="text-center mt-4 pb-8">
-                 <button onClick={handleSignOut} className="text-xs text-gray-600 underline hover:text-white">Sign Out</button>
-            </div>
+                 {!isPremium && (
+                     <div className="md:hidden">
+                        <BannerAd unitId={AD_UNITS.BANNER_HOME} />
+                     </div>
+                 )}
+
+                 <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2">
+                    <span className="w-1 h-6 bg-neon rounded-full"></span>
+                    Studio
+                 </h3>
+                 
+                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                    
+                    <div 
+                      onClick={() => requestFeatureAccess(View.TRY_ON)}
+                      className="md:col-span-8 w-full min-h-[220px] bg-gradient-to-r from-gray-900 to-black rounded-3xl p-8 relative overflow-hidden cursor-pointer group border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.5)] hover:border-neon/50 transition-all duration-300 flex flex-col justify-between"
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-br from-neon/20 via-transparent to-purple-600/10 opacity-60 group-hover:opacity-100 transition-opacity"></div>
+                        <div className="absolute right-0 top-0 w-40 h-40 bg-neon/20 blur-[80px] rounded-full"></div>
+
+                        <div className="relative z-10 h-full flex flex-col justify-between">
+                            <div className="flex justify-between items-start">
+                                <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl text-neon border border-neon/20 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                                    <Icons.Camera />
+                                </div>
+                                <span className="text-[10px] font-bold bg-neon text-black px-2 py-1 rounded-full uppercase tracking-wider">
+                                    Featured
+                                </span>
+                            </div>
+                            <div className="mt-8">
+                                <h2 className="text-3xl font-bold text-white mb-2 leading-none group-hover:text-neon transition-colors">Virtual Try-On</h2>
+                                <p className="text-gray-400 text-sm max-w-xs">Instantly visualize yourself in any outfit.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="md:col-span-4 grid grid-cols-2 md:grid-cols-1 gap-4">
+                        <div 
+                          onClick={() => requestFeatureAccess(View.WARDROBE)}
+                          className={`bg-gray-900/60 backdrop-blur-md p-5 rounded-3xl border border-white/5 cursor-pointer hover:border-blue-500/50 transition-all group relative overflow-hidden min-h-[160px] flex flex-col justify-between ${!userProfile?.hasPremiumFeatures ? 'opacity-70 grayscale-[0.5]' : ''}`}
+                        >
+                            {!userProfile?.hasPremiumFeatures && <div className="absolute top-2 right-2 text-xl">🔒</div>}
+                            <div className="absolute -right-4 -top-4 w-20 h-20 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition-all"></div>
+                            
+                            <div className="w-10 h-10 bg-gray-800/80 rounded-xl flex items-center justify-center text-blue-400 border border-white/5 mb-2 group-hover:scale-110 transition-transform">
+                                <Icons.Upload />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-white text-md leading-tight group-hover:text-blue-400 transition-colors">Create My<br/>Wardrobe</h3>
+                                <p className="text-[10px] text-gray-400 mt-1">Digitize & Organize</p>
+                            </div>
+                        </div>
+
+                        <div 
+                          onClick={() => requestFeatureAccess(View.DAILY_OUTFIT)}
+                          className={`bg-gray-900/60 backdrop-blur-md p-5 rounded-3xl border border-white/5 cursor-pointer hover:border-purple-500/50 transition-all group relative overflow-hidden min-h-[160px] flex flex-col justify-between ${!userProfile?.hasPremiumFeatures ? 'opacity-70 grayscale-[0.5]' : ''}`}
+                        >
+                            {!userProfile?.hasPremiumFeatures && <div className="absolute top-2 right-2 text-xl">🔒</div>}
+                            <div className="absolute -right-4 -top-4 w-20 h-20 bg-purple-500/10 rounded-full blur-xl group-hover:bg-purple-500/20 transition-all"></div>
+                            
+                            <div className="w-10 h-10 bg-gray-800/80 rounded-xl flex items-center justify-center text-purple-400 border border-white/5 mb-2 group-hover:scale-110 transition-transform">
+                                <Icons.Sparkles />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-white text-md leading-tight group-hover:text-purple-400 transition-colors">Daily<br/>Outfit</h3>
+                                <p className="text-[10px] text-gray-400 mt-1">What to wear today?</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div 
+                        onClick={() => requestFeatureAccess(View.MIX_MATCH)}
+                        className={`md:col-span-12 bg-gradient-to-r from-gray-900 to-[#0a1f0a] backdrop-blur-md p-6 rounded-3xl border border-white/5 cursor-pointer hover:border-green-500/50 transition-all group relative overflow-hidden flex items-center justify-between ${!userProfile?.hasPremiumFeatures ? 'opacity-70 grayscale-[0.5]' : ''}`}
+                    >
+                        {!userProfile?.hasPremiumFeatures && <div className="absolute top-4 right-4 text-xl">🔒</div>}
+                        <div className="absolute left-0 top-0 w-full h-full bg-green-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <div className="relative z-10 flex items-center gap-4">
+                            <div className="w-14 h-14 bg-gray-800/80 rounded-xl flex items-center justify-center text-green-400 border border-white/5 group-hover:scale-110 transition-transform">
+                                <Icons.Shirt />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-white text-xl group-hover:text-green-400 transition-colors">Smart Shopper</h3>
+                                <p className="text-xs text-gray-400">Build your perfect wardrobe plan within your budget</p>
+                            </div>
+                        </div>
+                        <div className="bg-white/5 p-3 rounded-full text-gray-400 group-hover:text-white group-hover:bg-white/10 transition-all">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                        </div>
+                    </div>
+                 </div>
+
+             </div>
           </div>
         );
+      case View.TRY_ON:
+        return (
+            <PasteLinkTryOn 
+                user={userProfile!} 
+                onBack={() => setCurrentView(View.HOME)} 
+                onSaveLook={handleSaveLook} 
+                onDeductUsage={handleDeductUsage} 
+            />
+        );
+      case View.WARDROBE:
+        return (
+            <PdfWardrobe 
+                user={userProfile!} 
+                onBack={() => setCurrentView(View.HOME)} 
+                onSaveWardrobe={handleSaveWardrobeAnalysis} 
+                onSaveLook={handleSaveLook}
+                onDeleteWardrobe={handleDeleteWardrobe}
+            />
+        );
+      case View.MIX_MATCH:
+        return <WardrobeBuilder onBack={() => setCurrentView(View.HOME)} onSaveItem={handleSaveWardrobeItem} />;
+      case View.DAILY_OUTFIT:
+        return <DailyOutfit user={userProfile!} onBack={() => setCurrentView(View.HOME)} onCreateWardrobe={() => setCurrentView(View.WARDROBE)} onSaveLook={handleSaveLook} />;
+      case View.PROFILE:
+        return <Profile 
+                  user={userProfile!} 
+                  onBack={() => setCurrentView(View.HOME)} 
+                  onOpenWardrobe={() => setCurrentView(View.WARDROBE)}
+                  onDeleteItem={handleDeleteItem}
+                  onSignOut={() => signOut(auth)}
+                  onUpdateAvatar={handleUpdateAvatar}
+               />;
+      default:
+        return <div>View Not Found</div>;
     }
   };
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans selection:bg-neon selection:text-white">
+    <>
       {renderContent()}
       
-      {/* Rewarded Ad Overlay */}
       {showRewardedAd && (
           <RewardedAd 
-            unitId={AD_UNITS.REWARDED_VIDEO} 
-            onReward={handleAdReward} 
-            onClose={() => setShowRewardedAd(false)} 
+             unitId={AD_UNITS.REWARDED_VIDEO} 
+             onReward={handleAdReward} 
+             onClose={() => setShowRewardedAd(false)} 
           />
       )}
-
-      {/* Sticky Banner Ad (Global) */}
-      {!userProfile?.hasPremium && (
-          <BannerAd unitId={AD_UNITS.BANNER_HOME} />
-      )}
-      
-      {/* Sticky Mobile Nav (Visible on Home) */}
-      {currentView === View.HOME && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-gray-800 p-4 pb-4 flex justify-around z-50 max-w-md mx-auto">
-            <button className="text-neon flex flex-col items-center gap-1">
-                <Icons.Home />
-                <span className="text-[10px]">Home</span>
-            </button>
-            <button className="text-gray-500 flex flex-col items-center gap-1 hover:text-white" onClick={() => setCurrentView(View.PDF_WARDROBE)}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.38 3.4a2 2 0 0 0-1.2-1.1l-2.19-.55a.5.5 0 0 0-.38.27L15 4H9l-1.6-2a.5.5 0 0 0-.38-.27L4.82 2.3a2 2 0 0 0-1.2 1.1l-2 6a2 2 0 0 0 1.2 2.5l1.18.3v9.7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9.7l1.18-.3a2 2 0 0 0 1.2-2.5l-2-6Z"/></svg>
-                <span className="text-[10px]">Wardrobe</span>
-            </button>
-            <button className="text-gray-500 flex flex-col items-center gap-1 hover:text-white" onClick={() => setCurrentView(View.PROFILE)}>
-                <div className="w-6 h-6 rounded-full border-2 border-gray-600 overflow-hidden">
-                     {userProfile?.avatarImage && <img src={userProfile.avatarImage} className="w-full h-full object-cover"/>}
-                </div>
-                <span className="text-[10px]">Profile</span>
-            </button>
-        </nav>
-      )}
-    </div>
+    </>
   );
 };
 

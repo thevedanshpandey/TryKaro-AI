@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { UserProfile, PdfAnalysisResult, GeneratedLook } from '../types';
 import { fileToGenerativePart, analyzePdfWardrobe, generateOutfitFromText } from '../services/geminiService';
@@ -11,9 +10,10 @@ interface Props {
   onBack: () => void;
   onSaveWardrobe: (analysis: PdfAnalysisResult | null) => void;
   onSaveLook: (look: GeneratedLook) => void;
+  onDeleteWardrobe: () => Promise<void>;
 }
 
-const PdfWardrobe: React.FC<Props> = ({ user, onBack, onSaveWardrobe, onSaveLook }) => {
+const PdfWardrobe: React.FC<Props> = ({ user, onBack, onSaveWardrobe, onSaveLook, onDeleteWardrobe }) => {
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<PdfAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -73,15 +73,12 @@ const PdfWardrobe: React.FC<Props> = ({ user, onBack, onSaveWardrobe, onSaveLook
 
       try {
         if (navigator.share) {
-             // For a PWA/Mobile experience we can try sharing directly if it was a real file URL
-             // Since it's base64, we might just share text or use a dummy link
              await navigator.share({
                  title: 'Check out my new look!',
                  text: 'What do you think of this outfit I styled with TryKaro?',
                  url: window.location.href
              });
         } else {
-             // Fallback
              alert("Link copied to clipboard! (Simulated)");
         }
       } catch (err) {
@@ -153,6 +150,12 @@ const PdfWardrobe: React.FC<Props> = ({ user, onBack, onSaveWardrobe, onSaveLook
       alert("Outfit saved to 'My Outfits'!");
   };
 
+  const handleDeleteClick = () => {
+      if (confirm("Are you sure you want to delete your current wardrobe? This will remove all associated outfits and items. This cannot be undone.")) {
+          onDeleteWardrobe();
+      }
+  };
+
   if (isAnalyzing) return <LoadingOverlay message="Analyzing wardrobe..." />;
 
   // Context Modal
@@ -195,10 +198,17 @@ const PdfWardrobe: React.FC<Props> = ({ user, onBack, onSaveWardrobe, onSaveLook
   }
 
   return (
-    <div className="min-h-screen p-4 max-w-md mx-auto pb-20">
-      <header className="flex items-center mb-6 gap-4">
-        <button onClick={onBack} className="text-gray-400 hover:text-white">←</button>
-        <h1 className="text-xl font-bold">My Wardrobe</h1>
+    <div className="min-h-screen p-4 w-full max-w-5xl mx-auto pb-20">
+      <header className="flex items-center mb-6 gap-4 justify-between">
+        <div className="flex items-center gap-4">
+            <button onClick={onBack} className="text-gray-400 hover:text-white">←</button>
+            <h1 className="text-2xl font-bold">My Wardrobe</h1>
+        </div>
+        {analysis && (
+            <button onClick={handleDeleteClick} className="text-red-500 hover:text-red-400 p-2 bg-red-900/10 rounded-full hover:bg-red-900/20 transition-colors">
+                <Icons.Trash />
+            </button>
+        )}
       </header>
 
       {isBulkGenerating && (
@@ -217,53 +227,53 @@ const PdfWardrobe: React.FC<Props> = ({ user, onBack, onSaveWardrobe, onSaveLook
 
       {!analysis ? (
         <div className="space-y-6 animate-in slide-in-from-bottom-4">
-          <div className="bg-card border border-dashed border-gray-700 rounded-2xl p-8 flex flex-col items-center justify-center text-center">
-            <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mb-4 text-neon">
+          <div className="bg-card border border-dashed border-gray-700 rounded-2xl p-12 flex flex-col items-center justify-center text-center max-w-lg mx-auto">
+            <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mb-6 text-neon shadow-lg">
               <Icons.Upload />
             </div>
-            <h3 className="font-bold text-white mb-2">Upload Wardrobe PDF</h3>
-            <p className="text-sm text-gray-400 mb-6">Upload a PDF containing photos of your clothes.</p>
+            <h3 className="font-bold text-white text-xl mb-2">Upload Wardrobe PDF</h3>
+            <p className="text-gray-400 mb-8 max-w-xs mx-auto">Upload a PDF containing photos of your clothes. Our AI will analyze, categorize, and create outfits for you.</p>
             <input type="file" accept="application/pdf" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-            <Button onClick={() => fileInputRef.current?.click()}>
+            <Button onClick={() => fileInputRef.current?.click()} className="px-8">
                 Select PDF
             </Button>
           </div>
         </div>
       ) : (
         <div className="space-y-6">
-            <div className="bg-gradient-to-r from-gray-900 to-black p-4 rounded-xl border border-gray-800">
-                <h2 className="font-bold text-neon mb-2">Stylist Summary</h2>
-                <p className="text-sm text-gray-300 leading-relaxed">{analysis.summary}</p>
+            <div className="bg-gradient-to-r from-gray-900 to-black p-6 rounded-2xl border border-gray-800">
+                <h2 className="font-bold text-neon mb-2 text-lg">Stylist Summary</h2>
+                <p className="text-gray-300 leading-relaxed">{analysis.summary}</p>
             </div>
 
-            <div className="flex bg-gray-900 p-1 rounded-lg">
-                <button onClick={() => setActiveTab('outfits')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${activeTab === 'outfits' ? 'bg-neon text-white' : 'text-gray-400'}`}>Outfits</button>
-                <button onClick={() => setActiveTab('items')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${activeTab === 'items' ? 'bg-neon text-white' : 'text-gray-400'}`}>Items ({analysis.items?.length})</button>
-                <button onClick={() => setActiveTab('intelligence')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${activeTab === 'intelligence' ? 'bg-neon text-white' : 'text-gray-400'}`}>Stats</button>
+            <div className="flex bg-gray-900 p-1.5 rounded-xl max-w-lg mx-auto">
+                <button onClick={() => setActiveTab('outfits')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'outfits' ? 'bg-neon text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Outfits</button>
+                <button onClick={() => setActiveTab('items')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'items' ? 'bg-neon text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Items ({analysis.items?.length})</button>
+                <button onClick={() => setActiveTab('intelligence')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'intelligence' ? 'bg-neon text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Stats</button>
             </div>
 
             {activeTab === 'intelligence' && (
-                <div className="space-y-4 animate-in fade-in">
+                <div className="space-y-4 animate-in fade-in max-w-2xl mx-auto">
                     {/* Health Score */}
                     {analysis.wardrobeHealth && (
-                        <div className="bg-card p-5 rounded-xl border border-gray-800">
-                             <div className="flex justify-between items-center mb-4">
-                                 <h3 className="font-bold text-white">Wardrobe Health</h3>
-                                 <span className={`text-xl font-bold ${analysis.wardrobeHealth.score > 80 ? 'text-green-400' : 'text-yellow-400'}`}>
+                        <div className="bg-card p-6 rounded-2xl border border-gray-800">
+                             <div className="flex justify-between items-center mb-6">
+                                 <h3 className="font-bold text-white text-lg">Wardrobe Health</h3>
+                                 <span className={`text-3xl font-bold ${analysis.wardrobeHealth.score > 80 ? 'text-green-400' : 'text-yellow-400'}`}>
                                      {analysis.wardrobeHealth.score}/100
                                  </span>
                              </div>
-                             <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden mb-2">
+                             <div className="w-full bg-gray-800 h-3 rounded-full overflow-hidden mb-3">
                                  <div className="bg-gradient-to-r from-red-500 to-green-500 h-full" style={{ width: `${analysis.wardrobeHealth.score}%` }}></div>
                              </div>
-                             <p className="text-xs text-gray-400 mb-4">{analysis.wardrobeHealth.verdict}</p>
+                             <p className="text-sm text-gray-400 mb-6">{analysis.wardrobeHealth.verdict}</p>
                              
                              {analysis.wardrobeHealth.missingEssentials && analysis.wardrobeHealth.missingEssentials.length > 0 && (
                                  <div className="mb-4">
-                                     <p className="text-xs font-bold text-red-300 uppercase mb-2">Missing Essentials</p>
+                                     <p className="text-xs font-bold text-red-300 uppercase mb-3">Missing Essentials</p>
                                      <div className="flex flex-wrap gap-2">
                                          {analysis.wardrobeHealth.missingEssentials.map((item, i) => (
-                                             <span key={i} className="text-[10px] bg-red-900/20 text-red-200 px-2 py-1 rounded border border-red-900/50">{item}</span>
+                                             <span key={i} className="text-xs bg-red-900/20 text-red-200 px-3 py-1.5 rounded-lg border border-red-900/50">{item}</span>
                                          ))}
                                      </div>
                                  </div>
@@ -278,70 +288,72 @@ const PdfWardrobe: React.FC<Props> = ({ user, onBack, onSaveWardrobe, onSaveLook
                     <div className="bg-neon/10 border border-neon/30 p-4 rounded-xl flex items-center justify-between">
                          <div>
                              <h4 className="font-bold text-white text-sm">Visualize All</h4>
-                             <p className="text-[10px] text-gray-400">Generate photos for {analysis.outfits.length} outfits</p>
+                             <p className="text-xs text-gray-400">Generate photos for {analysis.outfits.length} outfits</p>
                          </div>
                          <Button onClick={handleBulkVisualize} className="py-2 px-4 text-xs"><Icons.Sparkles /> Start Bulk</Button>
                     </div>
 
-                    {analysis.outfits?.map((outfit) => (
-                        <div key={outfit.id} className="bg-card rounded-xl overflow-hidden border border-gray-800">
-                             <div className="p-4 border-b border-gray-800 flex justify-between items-start">
-                                 <div>
-                                     <div className="flex items-center gap-2 mb-1">
-                                         <span className="bg-neon/10 text-neon text-[10px] px-2 py-0.5 rounded border border-neon/20 font-bold">Outfit #{outfit.id}</span>
-                                         <span className="text-xs text-gray-500">{outfit.style}</span>
-                                     </div>
-                                     <p className="text-xs text-gray-300"><span className="text-gray-500">Top:</span> {outfit.top}</p>
-                                     <p className="text-xs text-gray-300"><span className="text-gray-500">Bottom:</span> {outfit.bottom}</p>
-                                 </div>
-                                 <div className="text-center bg-gray-900 p-2 rounded-lg">
-                                     <span className="block text-lg font-bold text-white">{outfit.rating}</span>
-                                     <span className="text-[8px] text-gray-500">RATING</span>
-                                 </div>
-                             </div>
-                             
-                             {/* Generated Image Area */}
-                             <div className="bg-black min-h-[250px] relative flex items-center justify-center group">
-                                 {generatedImages[outfit.id] ? (
-                                     <div className="relative w-full h-full">
-                                         <img src={generatedImages[outfit.id]} className="w-full h-full object-cover" alt={`Outfit ${outfit.id}`} />
-                                         <div className="absolute top-2 right-2 flex gap-2">
-                                             <button onClick={() => handleShare(outfit.id)} className="bg-black/60 hover:bg-neon text-white p-2 rounded-full backdrop-blur-md transition-colors"><Icons.Share /></button>
-                                             <button onClick={() => handleSaveIndividualOutfit(outfit.id)} className="bg-black/60 hover:bg-neon text-white p-2 rounded-full backdrop-blur-md transition-colors"><Icons.Heart /></button>
-                                         </div>
-                                     </div>
-                                 ) : (
-                                     <div className="text-center p-6">
-                                         <p className="text-xs text-gray-500 mb-4 italic">"{outfit.reasoning}"</p>
-                                         <Button variant="outline" onClick={() => handleVisualize(outfit.id, outfit.visualPrompt)} isLoading={visualizingId === outfit.id} disabled={visualizingId !== null}>{visualizingId === outfit.id ? "Generating..." : "Visualize on Me"}</Button>
-                                     </div>
-                                 )}
-                             </div>
-
-                             {/* Upgrade Tip Section */}
-                             <div className="p-3 bg-gray-900/50 border-t border-gray-800 flex items-start gap-3">
-                                <span className="text-lg">🚀</span>
-                                <div>
-                                    <p className="text-[10px] text-gray-500 font-bold uppercase">Make it 10/10</p>
-                                    <p className="text-xs text-white">{outfit.upgradeTip || "Add a silver watch for a premium touch."}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {analysis.outfits?.map((outfit) => (
+                            <div key={outfit.id} className="bg-card rounded-2xl overflow-hidden border border-gray-800 flex flex-col h-full">
+                                <div className="p-4 border-b border-gray-800 flex justify-between items-start">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="bg-neon/10 text-neon text-[10px] px-2 py-0.5 rounded border border-neon/20 font-bold">Outfit #{outfit.id}</span>
+                                            <span className="text-xs text-gray-500">{outfit.style}</span>
+                                        </div>
+                                        <p className="text-xs text-gray-300 truncate"><span className="text-gray-500">Top:</span> {outfit.top}</p>
+                                        <p className="text-xs text-gray-300 truncate"><span className="text-gray-500">Bottom:</span> {outfit.bottom}</p>
+                                    </div>
+                                    <div className="text-center bg-gray-900 p-2 rounded-lg">
+                                        <span className="block text-lg font-bold text-white">{outfit.rating}</span>
+                                        <span className="text-[8px] text-gray-500">RATING</span>
+                                    </div>
                                 </div>
-                             </div>
-                        </div>
-                    ))}
+                                
+                                {/* Generated Image Area */}
+                                <div className="bg-black min-h-[250px] relative flex items-center justify-center group flex-1">
+                                    {generatedImages[outfit.id] ? (
+                                        <div className="relative w-full h-full">
+                                            <img src={generatedImages[outfit.id]} className="w-full h-full object-cover absolute inset-0" alt={`Outfit ${outfit.id}`} />
+                                            <div className="absolute top-2 right-2 flex gap-2">
+                                                <button onClick={() => handleShare(outfit.id)} className="bg-black/60 hover:bg-neon text-white p-2 rounded-full backdrop-blur-md transition-colors z-10"><Icons.Share /></button>
+                                                <button onClick={() => handleSaveIndividualOutfit(outfit.id)} className="bg-black/60 hover:bg-neon text-white p-2 rounded-full backdrop-blur-md transition-colors z-10"><Icons.Heart /></button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center p-6">
+                                            <p className="text-xs text-gray-500 mb-4 italic line-clamp-3">"{outfit.reasoning}"</p>
+                                            <Button variant="outline" onClick={() => handleVisualize(outfit.id, outfit.visualPrompt)} isLoading={visualizingId === outfit.id} disabled={visualizingId !== null}>{visualizingId === outfit.id ? "Generating..." : "Visualize on Me"}</Button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Upgrade Tip Section */}
+                                <div className="p-3 bg-gray-900/50 border-t border-gray-800 flex items-start gap-3 mt-auto">
+                                    <span className="text-lg">🚀</span>
+                                    <div>
+                                        <p className="text-[10px] text-gray-500 font-bold uppercase">Make it 10/10</p>
+                                        <p className="text-xs text-white line-clamp-2">{outfit.upgradeTip || "Add a silver watch for a premium touch."}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                     
-                    <div className="py-6 border-t border-gray-800 flex flex-col items-center">
-                        <Button onClick={handleSaveWardrobePlan} fullWidth className="bg-gradient-to-r from-neon to-purple-600 border-none shadow-lg shadow-neon/20">Save My Wardrobe</Button>
+                    <div className="py-8 border-t border-gray-800 flex justify-center">
+                        <Button onClick={handleSaveWardrobePlan} className="bg-gradient-to-r from-neon to-purple-600 border-none shadow-lg shadow-neon/20 px-12 py-4 text-lg">Save My Wardrobe</Button>
                     </div>
                 </div>
             )}
 
             {activeTab === 'items' && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {analysis.items?.map((item, i) => (
-                        <div key={i} className="bg-gray-900 p-3 rounded-lg border border-gray-800">
-                            <h4 className="font-bold text-sm text-white mb-1">{item.name}</h4>
-                            <p className="text-xs text-gray-400">{item.color} • {item.fit}</p>
-                            <span className="inline-block mt-2 text-[10px] bg-gray-800 px-2 py-0.5 rounded text-gray-500 border border-gray-700">{item.category}</span>
+                        <div key={i} className="bg-gray-900 p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors">
+                            <h4 className="font-bold text-sm text-white mb-2 line-clamp-1">{item.name}</h4>
+                            <p className="text-xs text-gray-400 mb-1">{item.color} • {item.fit}</p>
+                            <span className="inline-block mt-2 text-[10px] bg-gray-800 px-2 py-0.5 rounded text-gray-500 border border-gray-700 uppercase tracking-wide">{item.category}</span>
                         </div>
                     ))}
                 </div>

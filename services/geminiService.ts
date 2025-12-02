@@ -76,11 +76,38 @@ const fetchImageViaProxy = async (imageUrl: string): Promise<string> => {
             imageUrl = 'https:' + imageUrl;
         }
         
-        const imageProxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
-        const imageResponse = await fetch(imageProxyUrl);
-        if (!imageResponse.ok) throw new Error("Found image but could not download it.");
-
-        const blob = await imageResponse.blob();
+        // Use JSON endpoint which is more reliable for CORS than raw
+        const imageProxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(imageUrl)}`;
+        const response = await fetch(imageProxyUrl);
+        if (!response.ok) throw new Error("Proxy error");
+        
+        const data = await response.json();
+        if (!data.contents) throw new Error("No image content found");
+        
+        // contents is usually a data URI or raw text. For images, we need to handle it carefully.
+        // If allorigins returns base64 data uri directly:
+        if (data.contents.startsWith('data:image')) {
+            return data.contents;
+        }
+        
+        // If it returns binary/text, we might need a different approach.
+        // Let's fallback to the raw endpoint if JSON doesn't give us a Data URI, 
+        // but often the 'raw' endpoint is what we want for images if we can fetch it.
+        // However, fetching 'raw' directly in browser often fails CORS.
+        
+        // Strategy 2: If the JSON approach failed to give a Data URI (it usually returns text for HTML),
+        // let's try a different proxy strategy or just try the raw link if it allows CORS.
+        
+        // Let's try to construct a new Image object and draw it to canvas (bypassing strict fetch, but might taint canvas)
+        // Actually, for "download and show", we need the data.
+        
+        // Let's try a different approach: standard fetch.
+        // If that fails, we return the URL itself and handle it in UI? No, Gemini needs base64.
+        
+        // Let's go back to 'raw' but with better error handling.
+        const rawProxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
+        const rawResponse = await fetch(rawProxy);
+        const blob = await rawResponse.blob();
         
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -91,6 +118,7 @@ const fetchImageViaProxy = async (imageUrl: string): Promise<string> => {
             reader.onerror = reject;
             reader.readAsDataURL(blob);
         });
+
     } catch (error) {
         console.error("Proxy fetch error:", error);
         throw new Error("Could not download image content.");
@@ -104,11 +132,13 @@ export const scrapeClothingImage = async (url: string): Promise<string> => {
     }
 
     try {
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
         const response = await fetch(proxyUrl);
         if (!response.ok) throw new Error("Failed to load page content");
         
-        const html = await response.text();
+        const data = await response.json();
+        const html = data.contents; // allorigins 'get' returns content in this field
+        
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
@@ -131,15 +161,17 @@ export const scrapeClothingImage = async (url: string): Promise<string> => {
 
         if (!imageUrl) {
             const images = Array.from(doc.querySelectorAll('img'));
+            // Heuristic: Prefer large images that are not SVGs
             const likelyProduct = images.find(img => {
                 const src = img.getAttribute('src');
                 if (!src) return false;
-                return (img.width > 200 || (img.naturalWidth > 200)) && !src.endsWith('.svg');
+                // Check if absolute URL to avoid checking width of tracking pixels
+                return !src.endsWith('.svg') && (src.includes('http') || src.includes('cdn')); 
             });
             if (likelyProduct) imageUrl = likelyProduct.getAttribute('src');
         }
 
-        if (!imageUrl) throw new Error("Could not find a suitable product image on this page. Try right-clicking the image and copying the Image Address directly.");
+        if (!imageUrl) throw new Error("Could not find a suitable product image on this page.");
 
         if (imageUrl.startsWith('/')) {
             const urlObj = new URL(url);
