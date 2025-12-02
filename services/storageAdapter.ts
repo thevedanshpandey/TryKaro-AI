@@ -48,7 +48,6 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
     if (!userId) return;
 
     // --- BATCH 1: CRITICAL CORE DATA (Profile & Subscription) ---
-    // If this fails, we must throw an error so the UI knows the plan update failed.
     try {
         const batch = writeBatch(db);
 
@@ -72,6 +71,7 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
         }, { merge: true });
 
         // 3. Subscriptions (Billing Data)
+        // Ensure we are explicitly saving the planType and tokens
         const subRef = doc(db, 'subscriptions', userId);
         batch.set(subRef, {
             user_id: userId,
@@ -147,8 +147,6 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
             const wa = profile.wardrobeAnalysis;
             const analysisId = `wa_${userId}_latest`;
             
-            // We can do analysis + items + outfits in one batch if small, but let's split if huge.
-            // For now, simple batch.
             const waBatch = writeBatch(db);
             
             waBatch.set(doc(db, 'wardrobe_analyses', analysisId), {
@@ -243,7 +241,6 @@ export const deleteWardrobeFromStorage = async (userId: string): Promise<void> =
     }
 };
 
-// CORE LOAD: Instantly gets Profile + Subscription. Nothing else.
 export const loadUserProfileFromStorage = async (userId: string): Promise<UserProfile | null> => {
     if (!userId) return null;
     
@@ -261,6 +258,7 @@ export const loadUserProfileFromStorage = async (userId: string): Promise<UserPr
     let avatarImage: string | null = null;
 
     try {
+        // Load User Profile
         const userRef = doc(db, 'users', userId);
         const userDoc = await getDoc(userRef);
         
@@ -273,6 +271,7 @@ export const loadUserProfileFromStorage = async (userId: string): Promise<UserPr
     }
 
     try {
+        // Load Subscription
         const subRef = doc(db, 'subscriptions', userId);
         const subDoc = await getDoc(subRef);
         if (subDoc.exists()) {
@@ -306,7 +305,6 @@ export const loadUserProfileFromStorage = async (userId: string): Promise<UserPr
     };
 };
 
-// BACKGROUND LOAD: Fetches History, Wardrobe, Items
 export const loadUserHistoryFromStorage = async (userId: string): Promise<Partial<UserProfile>> => {
     if (!userId) return {};
 

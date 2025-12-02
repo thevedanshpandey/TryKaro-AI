@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, UserProfile, GeneratedLook, PdfAnalysisResult, SavedWardrobeItem } from './types';
 import { Icons, AD_UNITS } from './constants';
 import { LoadingOverlay } from './components/LoadingOverlay';
@@ -22,32 +21,20 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [currentView, setCurrentView] = useState<View>(View.ONBOARDING);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   // Auth & Verification States
   const [isAuthSuccess, setIsAuthSuccess] = useState(false);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
-  const isSessionReadyRef = useRef(false);
 
   // Ad Reward State
   const [showRewardedAd, setShowRewardedAd] = useState(false);
   const [pendingTokenReward, setPendingTokenReward] = useState(0);
 
-  // Initial Sign Out to force clean state
-  useEffect(() => {
-    const initSession = async () => {
-        console.log("Initializing App Session...");
-        await signOut(auth);
-        isSessionReadyRef.current = true;
-    };
-    initSession();
-  }, []);
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (!isSessionReadyRef.current) return;
-
       setUser(currentUser);
+      
       if (currentUser) {
         
         // Safety: If user is verified, suppress modal immediately.
@@ -202,14 +189,15 @@ const App: React.FC = () => {
   const handleOnboardingComplete = async (data: UserProfile) => {
     if (!user) return;
     
-    const finalProfile = {
+    // Explicitly cast to UserProfile to ensure types match
+    const finalProfile: UserProfile = {
         ...data,
-        planType: userProfile?.planType || 'Free',
-        priceTier: userProfile?.priceTier || 0,
-        tokens: userProfile?.tokens || 50,
-        tryOnLimit: userProfile?.tryOnLimit || 2,
-        tryOnUsed: userProfile?.tryOnUsed || 0,
-        hasPremiumFeatures: userProfile?.hasPremiumFeatures || false,
+        planType: (userProfile?.planType || 'Free') as 'Free' | 'Monthly_99' | 'Monthly_299',
+        priceTier: (userProfile?.priceTier ?? 0) as 0 | 99 | 299,
+        tokens: userProfile?.tokens ?? 50,
+        tryOnLimit: userProfile?.tryOnLimit ?? 2,
+        tryOnUsed: userProfile?.tryOnUsed ?? 0,
+        hasPremiumFeatures: userProfile?.hasPremiumFeatures ?? false,
         savedItems: [],
         savedLooks: [],
         wardrobeAnalysis: null

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, AuthError, db } from '../firebaseConfig';
 import { Button } from './Button';
-import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, Timestamp, writeBatch } from 'firebase/firestore';
 
 interface Props {
   onSuccess: (shouldVerify: boolean) => void;
@@ -45,51 +45,62 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
   };
 
   const initUserDB = async (user: any) => {
-      console.log("Checking user schema status for:", user.uid);
+      console.log("Initializing DB for:", user.uid);
       try {
+          const batch = writeBatch(db);
+          let changesMade = false;
+
+          // 1. Check User Profile
           const userRef = doc(db, 'users', user.uid);
-          // Use a merge set to ensure we don't overwrite if it exists, but we ensure fields are present
-          // However, checking existence first is safer to avoid resetting fields to defaults
           const userSnap = await getDoc(userRef);
 
-          if (userSnap.exists()) {
-              console.log("User profile already exists. SKIPPING overwrite.");
-              return;
+          if (!userSnap.exists()) {
+              console.log("Creating new user profile doc...");
+              batch.set(userRef, {
+                  user_id: user.uid,
+                  name: user.displayName || user.email?.split('@')[0] || 'User',
+                  email: user.email || '',
+                  city: "Unknown", // Triggers Onboarding Flow
+                  gender: "Not Set",
+                  occupation: "Not Set",
+                  height: "0",
+                  weight: "0",
+                  bodyShape: "Not Set",
+                  skinTone: 1,
+                  avatarImage: "",
+                  updatedAt: Timestamp.now()
+              });
+              changesMade = true;
           }
 
-          console.log("New user detected. Initializing default schema...");
-          
-          // 1. Create User Profile with Defaults
-          await setDoc(userRef, {
-              user_id: user.uid,
-              name: user.displayName || user.email?.split('@')[0] || 'User',
-              email: user.email || '',
-              city: "Unknown",
-              gender: "Not Set",
-              occupation: "Not Set",
-              height: "0",
-              weight: "0",
-              bodyShape: "Not Set",
-              skinTone: 1,
-              avatarImage: "",
-              updatedAt: Timestamp.now()
-          }, { merge: true });
+          // 2. Check Subscription
+          const subRef = doc(db, 'subscriptions', user.uid);
+          const subSnap = await getDoc(subRef);
 
-          // 2. Create Subscription/Billing Data
-          await setDoc(doc(db, 'subscriptions', user.uid), {
-              user_id: user.uid,
-              planType: 'Free',
-              priceTier: 0,
-              tokens: 50,
-              tryOnLimit: 2,
-              tryOnUsed: 0,
-              hasPremiumFeatures: false,
-              updatedAt: Timestamp.now()
-          }, { merge: true });
+          if (!subSnap.exists()) {
+              console.log("Creating new subscription doc...");
+              batch.set(subRef, {
+                  user_id: user.uid,
+                  planType: 'Free',
+                  priceTier: 0,
+                  tokens: 50,
+                  tryOnLimit: 2,
+                  tryOnUsed: 0,
+                  hasPremiumFeatures: false,
+                  updatedAt: Timestamp.now()
+              });
+              changesMade = true;
+          }
           
-          console.log("Schema initialized successfully.");
+          if (changesMade) {
+              await batch.commit();
+              console.log("DB Initialization Complete.");
+          } else {
+              console.log("User Data already exists.");
+          }
       } catch (dbErr) {
           console.error("Failed to initialize DB schema:", dbErr);
+          // Don't block login on DB error, allow App.tsx to handle fallback or retry
       }
   };
 
@@ -127,7 +138,9 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
         console.log("Attempting Login...");
         await signInWithEmailAndPassword(auth, email, password);
         console.log("Login Successful");
-        // Login never requires verification UI flow in this app logic
+        // Check DB just in case (e.g. legacy users)
+        if (auth.currentUser) await initUserDB(auth.currentUser);
+        
         onSuccess(false);
       } else {
         console.log("Attempting Account Creation...");
@@ -143,11 +156,9 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
             console.log("Verification Email Sent Successfully!");
         } catch (emailError: any) {
             console.error("Verification Email FAILED:", emailError);
-            
             if (emailError.code === 'auth/unauthorized-domain') {
-                 console.error("DOMAIN ERROR DETECTED DURING VERIFICATION");
                  setDomainError(window.location.hostname);
-                 alert("Account created, but the verification email was blocked because this domain is not authorized in Firebase Console.");
+                 alert("Account created, but verification email blocked by domain settings.");
             }
         }
         // Signup REQUIRES verification UI flow
@@ -170,7 +181,7 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
       <div className="w-full max-w-md bg-card/80 backdrop-blur-xl border border-gray-800 p-8 rounded-3xl shadow-2xl relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
         <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-white mb-2">TryKaro<span className="text-neon">.ai</span></h1>
-            <p className="text-gray-400">Your AI Wardrobe & Virtual Stylist</p>
+            <p className="text-gray-400">Your Personal AI Wardrobe & Virtual Stylist</p>
         </div>
 
         {domainError && (
