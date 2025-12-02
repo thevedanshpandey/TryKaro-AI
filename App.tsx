@@ -49,6 +49,12 @@ const App: React.FC = () => {
 
       setUser(currentUser);
       if (currentUser) {
+        
+        // Safety: If user is verified, suppress modal immediately.
+        if (currentUser.emailVerified || currentUser.providerData[0]?.providerId === 'google.com') {
+            setShowVerifyModal(false);
+        }
+
         setLoading(true);
         console.log("Auth State Changed: User Logged In", currentUser.uid);
         
@@ -120,10 +126,15 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  const handleAuthSuccess = (isSignup: boolean) => {
+  const handleAuthSuccess = (shouldVerify: boolean) => {
     setIsAuthSuccess(true);
-    if (isSignup) {
+    
+    // Strict logic: Verification is ONLY for Email/Password SIGNUPS.
+    // Google Sign-In and Login existing users always pass false.
+    if (shouldVerify) {
         setShowVerifyModal(true);
+    } else {
+        setShowVerifyModal(false);
     }
   };
 
@@ -326,6 +337,7 @@ const App: React.FC = () => {
         return <LoadingOverlay message="Syncing..." />;
     }
 
+    // Only show verification modal if logic explicitly requested it AND user is NOT google verified
     if (showVerifyModal) {
         return (
             <VerifyEmail 

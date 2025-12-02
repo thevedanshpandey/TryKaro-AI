@@ -5,7 +5,7 @@ import { Button } from './Button';
 import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 
 interface Props {
-  onSuccess: (isSignup: boolean) => void;
+  onSuccess: (shouldVerify: boolean) => void;
 }
 
 const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
@@ -48,6 +48,8 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
       console.log("Checking user schema status for:", user.uid);
       try {
           const userRef = doc(db, 'users', user.uid);
+          // Use a merge set to ensure we don't overwrite if it exists, but we ensure fields are present
+          // However, checking existence first is safer to avoid resetting fields to defaults
           const userSnap = await getDoc(userRef);
 
           if (userSnap.exists()) {
@@ -71,7 +73,7 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
               skinTone: 1,
               avatarImage: "",
               updatedAt: Timestamp.now()
-          });
+          }, { merge: true });
 
           // 2. Create Subscription/Billing Data
           await setDoc(doc(db, 'subscriptions', user.uid), {
@@ -83,7 +85,7 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
               tryOnUsed: 0,
               hasPremiumFeatures: false,
               updatedAt: Timestamp.now()
-          });
+          }, { merge: true });
           
           console.log("Schema initialized successfully.");
       } catch (dbErr) {
@@ -102,8 +104,8 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
       
       await initUserDB(result.user);
 
-      const isNew = result.user.metadata.creationTime === result.user.metadata.lastSignInTime;
-      onSuccess(isNew);
+      // Google Sign-In is trusted. Never show email verification.
+      onSuccess(false); 
     } catch (err: any) {
       handleAuthError(err);
     }
@@ -125,6 +127,7 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
         console.log("Attempting Login...");
         await signInWithEmailAndPassword(auth, email, password);
         console.log("Login Successful");
+        // Login never requires verification UI flow in this app logic
         onSuccess(false);
       } else {
         console.log("Attempting Account Creation...");
@@ -147,6 +150,7 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
                  alert("Account created, but the verification email was blocked because this domain is not authorized in Firebase Console.");
             }
         }
+        // Signup REQUIRES verification UI flow
         onSuccess(true);
       }
     } catch (err: any) {
