@@ -22,10 +22,11 @@ const getMimeType = (dataUrl: string): string => {
 
 // Helper to compress image to reduce payload size and prevent XHR errors
 const compressImage = async (base64Str: string, maxWidth = 800, quality = 0.7): Promise<string> => {
-    return new Promise((resolve) => {
-        // If it's already a short string (URL) or not base64, return as is
-        if (!base64Str.startsWith('data:image')) {
-             resolve(base64Str);
+    return new Promise((resolve, reject) => {
+        // Strict check: We only support Data URIs for compression context here.
+        // If it's a URL or ID, we can't compress it client-side without CORS issues or lookups.
+        if (!base64Str || !base64Str.startsWith('data:image')) {
+             reject(new Error("Invalid image format. Expected Data URI."));
              return;
         }
 
@@ -53,7 +54,7 @@ const compressImage = async (base64Str: string, maxWidth = 800, quality = 0.7): 
             // Always convert to JPEG for efficient compression
             resolve(canvas.toDataURL('image/jpeg', quality));
         };
-        img.onerror = () => resolve(base64Str); // Fallback
+        img.onerror = () => reject(new Error("Failed to load image for compression.")); 
     });
 };
 
@@ -89,20 +90,6 @@ const fetchImageViaProxy = async (imageUrl: string): Promise<string> => {
         if (data.contents.startsWith('data:image')) {
             return data.contents;
         }
-        
-        // If it returns binary/text, we might need a different approach.
-        // Let's fallback to the raw endpoint if JSON doesn't give us a Data URI, 
-        // but often the 'raw' endpoint is what we want for images if we can fetch it.
-        // However, fetching 'raw' directly in browser often fails CORS.
-        
-        // Strategy 2: If the JSON approach failed to give a Data URI (it usually returns text for HTML),
-        // let's try a different proxy strategy or just try the raw link if it allows CORS.
-        
-        // Let's try to construct a new Image object and draw it to canvas (bypassing strict fetch, but might taint canvas)
-        // Actually, for "download and show", we need the data.
-        
-        // Let's try a different approach: standard fetch.
-        // If that fails, we return the URL itself and handle it in UI? No, Gemini needs base64.
         
         // Let's go back to 'raw' but with better error handling.
         const rawProxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
@@ -190,44 +177,47 @@ export const scrapeClothingImage = async (url: string): Promise<string> => {
 export const generateTryOn = async (user: UserProfile, clothingImageBase64: string, description: string): Promise<TryOnResult | null> => {
     const ai = createGeminiClient();
     
-    if (!user.avatarImage) throw new Error("User cameo not found. Please create your avatar first.");
-
-    // Compress images to ensure payload isn't too large (fixes xhr error)
-    const compressedUserImage = await compressImage(user.avatarImage);
-    const compressedClothImage = await compressImage(clothingImageBase64);
-
-    const userCameoBase64 = compressedUserImage.includes('base64,') ? compressedUserImage.split('base64,')[1] : compressedUserImage;
-    const userMimeType = getMimeType(compressedUserImage);
-
-    const clothData = compressedClothImage.includes('base64,') ? compressedClothImage.split('base64,')[1] : compressedClothImage;
-    const clothMimeType = getMimeType(compressedClothImage);
-
-    const skinToneDesc = getSkinToneDescription(user.skinTone);
-
-    // Prompt updated to prioritize IMAGE generation over JSON text
-    const prompt = `
-    ACT AS TRYKARO AI — EXPERT VIRTUAL TAILOR.
-    
-    INPUTS:
-    1. TARGET MODEL (First Image): User's face/body.
-    2. CLOTHING (Second Image): The outfit to try on.
-
-    TASK:
-    Generate a photorealistic image of the TARGET MODEL wearing the CLOTHING.
-
-    CONSTRAINTS (STRICT):
-    - Height: ${user.height} cm
-    - Weight: ${user.weight} kg
-    - Body Shape: ${user.bodyShape}
-    - Skin Tone: ${skinToneDesc}
-    - IDENTITY LOCK: Must be the person from the first image.
-    
-    OUTPUT INSTRUCTIONS:
-    1. GENERATE THE IMAGE FIRST. This is the most important step.
-    2. After the image, provide a brief text verdict starting with "VERDICT:".
-    `;
+    // VALIDATION: Ensure avatar is present and valid
+    if (!user.avatarImage || !user.avatarImage.startsWith('data:image')) {
+        throw new Error("Profile photo missing on this device. For privacy, photos are stored locally. Please go to Profile and re-upload your selfie.");
+    }
 
     try {
+        // Compress images to ensure payload isn't too large (fixes xhr error)
+        const compressedUserImage = await compressImage(user.avatarImage);
+        const compressedClothImage = await compressImage(clothingImageBase64);
+
+        const userCameoBase64 = compressedUserImage.split('base64,')[1];
+        const userMimeType = getMimeType(compressedUserImage);
+
+        const clothData = compressedClothImage.includes('base64,') ? compressedClothImage.split('base64,')[1] : compressedClothImage;
+        const clothMimeType = getMimeType(compressedClothImage);
+
+        const skinToneDesc = getSkinToneDescription(user.skinTone);
+
+        // Prompt updated to prioritize IMAGE generation over JSON text
+        const prompt = `
+        ACT AS TRYKARO AI — EXPERT VIRTUAL TAILOR.
+        
+        INPUTS:
+        1. TARGET MODEL (First Image): User's face/body.
+        2. CLOTHING (Second Image): The outfit to try on.
+
+        TASK:
+        Generate a photorealistic image of the TARGET MODEL wearing the CLOTHING.
+
+        CONSTRAINTS (STRICT):
+        - Height: ${user.height} cm
+        - Weight: ${user.weight} kg
+        - Body Shape: ${user.bodyShape}
+        - Skin Tone: ${skinToneDesc}
+        - IDENTITY LOCK: Must be the person from the first image.
+        
+        OUTPUT INSTRUCTIONS:
+        1. GENERATE THE IMAGE FIRST. This is the most important step.
+        2. After the image, provide a brief text verdict starting with "VERDICT:".
+        `;
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image', 
             contents: {
@@ -268,12 +258,16 @@ export const generateTryOn = async (user: UserProfile, clothingImageBase64: stri
              throw new Error("Generation failed but AI says: " + feedbackText);
         }
         return null;
+
     } catch (error: any) {
         console.error("TryOn Error:", error);
+        if (error.message?.includes("Invalid image") || error.message?.includes("Profile photo")) {
+             throw error; // Re-throw strict validation errors
+        }
         if (error.message?.includes("xhr error") || error.code === 500) {
             throw new Error("Image too large or network connection unstable. Try a smaller image.");
         }
-        throw error;
+        throw new Error("Try-On failed. Please ensure you have a clear selfie uploaded.");
     }
 };
 
@@ -549,31 +543,35 @@ export const analyzePdfWardrobe = async (pdfBase64: string, user: UserProfile, c
 
 export const generateOutfitFromText = async (user: UserProfile, visualPrompt: string): Promise<string> => {
     const ai = createGeminiClient();
-    if (!user.avatarImage) throw new Error("User cameo not found.");
     
-    // Compress user image
-    const compressedUserImage = await compressImage(user.avatarImage);
-    const userCameoBase64 = compressedUserImage.includes('base64,') ? compressedUserImage.split('base64,')[1] : compressedUserImage;
-    const userMimeType = getMimeType(compressedUserImage);
+    // VALIDATION: Strict check for Data URI
+    if (!user.avatarImage || !user.avatarImage.startsWith('data:image')) {
+        throw new Error("Profile photo missing on this device. Please go to Profile and re-upload your selfie.");
+    }
     
-    const skinToneDesc = getSkinToneDescription(user.skinTone);
-
-    const prompt = `
-    ACT AS TRYKARO AI — EXPERT VIRTUAL STYLIST.
-    
-    Target Model: User image provided.
-    BODY METRICS (STRICT): Height: ${user.height} cm, Weight: ${user.weight} kg, Shape: ${user.bodyShape}, Skin: ${skinToneDesc}.
-    
-    Task: Generate a photorealistic image of the Target Model wearing:
-    ${visualPrompt}
-    
-    RULES:
-    1. IDENTITY LOCK: Exact face, hair, and body shape of reference.
-    2. PHYSIQUE REALISM: Must look like ${user.height}cm / ${user.weight}kg.
-    3. PHOTOREALISM: Studio lighting, high fashion.
-    `;
-
     try {
+        // Compress user image
+        const compressedUserImage = await compressImage(user.avatarImage);
+        const userCameoBase64 = compressedUserImage.split('base64,')[1];
+        const userMimeType = getMimeType(compressedUserImage);
+        
+        const skinToneDesc = getSkinToneDescription(user.skinTone);
+
+        const prompt = `
+        ACT AS TRYKARO AI — EXPERT VIRTUAL STYLIST.
+        
+        Target Model: User image provided.
+        BODY METRICS (STRICT): Height: ${user.height} cm, Weight: ${user.weight} kg, Shape: ${user.bodyShape}, Skin: ${skinToneDesc}.
+        
+        Task: Generate a photorealistic image of the Target Model wearing:
+        ${visualPrompt}
+        
+        RULES:
+        1. IDENTITY LOCK: Exact face, hair, and body shape of reference.
+        2. PHYSIQUE REALISM: Must look like ${user.height}cm / ${user.weight}kg.
+        3. PHOTOREALISM: Studio lighting, high fashion.
+        `;
+
         const response = await ai.models.generateContent({
              model: 'gemini-2.5-flash-image',
              contents: {
@@ -591,8 +589,11 @@ export const generateOutfitFromText = async (user: UserProfile, visualPrompt: st
             }
         }
         throw new Error("No image generated.");
-    } catch (error) {
+    } catch (error: any) {
         console.error("Outfit Viz Error:", error);
+        if (error.message?.includes("Invalid image") || error.message?.includes("Profile photo")) {
+             throw error; 
+        }
         throw error;
     }
 }

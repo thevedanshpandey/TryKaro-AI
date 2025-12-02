@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { UserProfile, PdfAnalysisResult, GeneratedLook } from '../types';
 import { fileToGenerativePart, analyzePdfWardrobe, generateOutfitFromText } from '../services/geminiService';
@@ -92,8 +93,12 @@ const PdfWardrobe: React.FC<Props> = ({ user, onBack, onSaveWardrobe, onSaveLook
     try {
         const image = await generateOutfitFromText(user, visualPrompt);
         setGeneratedImages(prev => ({...prev, [outfitId]: image}));
-    } catch (e) {
-        alert("Could not generate image for this outfit.");
+    } catch (e: any) {
+        if (e.message?.includes("Profile photo")) {
+            alert(e.message);
+        } else {
+            alert("Could not generate image for this outfit. Please try again.");
+        }
     } finally {
         setVisualizingId(null);
     }
@@ -110,17 +115,29 @@ const PdfWardrobe: React.FC<Props> = ({ user, onBack, onSaveWardrobe, onSaveLook
     setBulkProgress({ current: 0, total: outfitsToGen.length });
 
     const BATCH_SIZE = 2;
+    let stopProcessing = false;
+
     for (let i = 0; i < outfitsToGen.length; i += BATCH_SIZE) {
+        if (stopProcessing) break;
+        
         const batch = outfitsToGen.slice(i, i + BATCH_SIZE);
         await Promise.all(batch.map(async (outfit) => {
+            if (stopProcessing) return;
             try {
                 const img = await generateOutfitFromText(user, outfit.visualPrompt);
                 setGeneratedImages(prev => ({...prev, [outfit.id]: img}));
-            } catch (e) {
+            } catch (e: any) {
                 console.error(`Failed to generate outfit ${outfit.id}`, e);
+                if (e.message?.includes("Profile photo")) {
+                    stopProcessing = true;
+                    alert(e.message);
+                }
             }
         }));
-        setBulkProgress(prev => ({ ...prev, current: Math.min(prev.current + BATCH_SIZE, prev.total) }));
+        
+        if (!stopProcessing) {
+            setBulkProgress(prev => ({ ...prev, current: Math.min(prev.current + BATCH_SIZE, prev.total) }));
+        }
     }
     setIsBulkGenerating(false);
   };
