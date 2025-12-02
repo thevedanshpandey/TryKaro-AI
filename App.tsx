@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { View, UserProfile, GeneratedLook, PdfAnalysisResult, SavedWardrobeItem } from './types';
 import { Icons, AD_UNITS } from './constants';
@@ -189,7 +190,8 @@ const App: React.FC = () => {
   const handleOnboardingComplete = async (data: UserProfile) => {
     if (!user) return;
     
-    // Explicitly cast to UserProfile to ensure types match
+    // Merge the new profile data (name, height, etc) with the existing Subscription data
+    // stored in userProfile state from the previous step.
     const finalProfile: UserProfile = {
         ...data,
         planType: (userProfile?.planType || 'Free') as 'Free' | 'Monthly_99' | 'Monthly_299',
@@ -198,6 +200,7 @@ const App: React.FC = () => {
         tryOnLimit: userProfile?.tryOnLimit ?? 2,
         tryOnUsed: userProfile?.tryOnUsed ?? 0,
         hasPremiumFeatures: userProfile?.hasPremiumFeatures ?? false,
+        
         savedItems: [],
         savedLooks: [],
         wardrobeAnalysis: null

@@ -58,20 +58,19 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
         const userRef = doc(db, 'users', userId);
         batch.set(userRef, {
             user_id: userId,
-            name: profile.name || '',
-            city: profile.city || '',
+            name: profile.name || 'User',
+            city: profile.city || 'Unknown',
             gender: profile.gender || '',
             occupation: profile.occupation || '',
-            height: profile.height || '',
-            weight: profile.weight || '',
+            height: profile.height || '0',
+            weight: profile.weight || '0',
             bodyShape: profile.bodyShape || '',
             skinTone: profile.skinTone || 10,
-            avatarImage: avatarId, 
+            avatarImage: avatarId || null, 
             updatedAt: Timestamp.now()
         }, { merge: true });
 
         // 3. Subscriptions (Billing Data)
-        // Ensure we are explicitly saving the planType and tokens
         const subRef = doc(db, 'subscriptions', userId);
         batch.set(subRef, {
             user_id: userId,
@@ -89,7 +88,8 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
 
     } catch (e) {
         console.error("❌ CRITICAL SAVE ERROR (Core):", e);
-        throw e; // Stop execution, alert user in App.tsx
+        // We throw to alert App.tsx that persistence failed
+        throw e;
     }
 
     // --- BATCH 2: SAVED ITEMS (Silent Fail Allowed) ---
@@ -101,11 +101,11 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
                 wishlistBatch.set(itemRef, {
                     item_id: item.id,
                     user_id: userId,
-                    name: item.name,
-                    price: item.price,
-                    link: item.link,
+                    name: item.name || 'Unknown Item',
+                    price: item.price || '0',
+                    link: item.link || '',
                     image_keyword: item.image_keyword || '',
-                    timestamp: item.timestamp,
+                    timestamp: item.timestamp || Date.now(),
                     origin: 'WISHLIST'
                 });
             }
@@ -129,9 +129,9 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
                  looksBatch.set(lookRef, {
                      outfit_id: look.id,
                      user_id: userId,
-                     image: look.image,
-                     description: look.description,
-                     timestamp: look.timestamp,
+                     image: look.image || null,
+                     description: look.description || '',
+                     timestamp: look.timestamp || Date.now(),
                      type: 'GENERATED_LOOK'
                  }, { merge: true });
              }
@@ -152,10 +152,10 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
             waBatch.set(doc(db, 'wardrobe_analyses', analysisId), {
                 analysis_id: analysisId,
                 user_id: userId,
-                summary: wa.summary,
-                colorPalette: wa.colorPalette,
-                wardrobeHealth: wa.wardrobeHealth,
-                colorProfile: wa.colorProfile,
+                summary: wa.summary || '',
+                colorPalette: wa.colorPalette || [],
+                wardrobeHealth: wa.wardrobeHealth || {},
+                colorProfile: wa.colorProfile || {},
                 updatedAt: Timestamp.now()
             });
 
@@ -166,11 +166,11 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
                     waBatch.set(itemRef, {
                         item_id: itemId,
                         user_id: userId,
-                        name: item.name,
-                        color: item.color,
-                        fit: item.fit,
-                        category: item.category,
-                        pattern: item.pattern,
+                        name: item.name || '',
+                        color: item.color || '',
+                        fit: item.fit || '',
+                        category: item.category || '',
+                        pattern: item.pattern || '',
                         origin: 'PDF_ANALYSIS',
                         analysis_id: analysisId
                     });
@@ -191,14 +191,14 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
                          user_id: userId,
                          type: 'WARDROBE_LOOK',
                          analysis_id: analysisId,
-                         top: o.top,
-                         bottom: o.bottom,
-                         style: o.style,
-                         reasoning: o.reasoning,
-                         rating: o.rating,
-                         upgradeTip: o.upgradeTip,
-                         visualPrompt: o.visualPrompt,
-                         image: o.generatedImage 
+                         top: o.top || '',
+                         bottom: o.bottom || '',
+                         style: o.style || '',
+                         reasoning: o.reasoning || '',
+                         rating: o.rating || 0,
+                         upgradeTip: o.upgradeTip || '',
+                         visualPrompt: o.visualPrompt || '',
+                         image: o.generatedImage || null
                      });
                  }
             }
@@ -282,14 +282,14 @@ export const loadUserProfileFromStorage = async (userId: string): Promise<UserPr
     }
 
     return {
-        name: userData.name,
-        city: userData.city,
-        gender: userData.gender,
-        occupation: userData.occupation,
-        height: userData.height,
-        weight: userData.weight,
-        bodyShape: userData.bodyShape,
-        skinTone: userData.skinTone,
+        name: userData.name || '',
+        city: userData.city || '',
+        gender: userData.gender || '',
+        occupation: userData.occupation || '',
+        height: userData.height || '',
+        weight: userData.weight || '',
+        bodyShape: userData.bodyShape || '',
+        skinTone: userData.skinTone || 10,
         avatarImage: avatarImage,
         
         planType: subData.planType || 'Free',

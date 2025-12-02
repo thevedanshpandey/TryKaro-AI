@@ -52,9 +52,14 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
 
           // 1. Check User Profile
           const userRef = doc(db, 'users', user.uid);
-          const userSnap = await getDoc(userRef);
+          // Use try-catch for individual reads to avoid permission errors blocking the whole flow
+          let userExists = false;
+          try {
+             const userSnap = await getDoc(userRef);
+             userExists = userSnap.exists();
+          } catch (e) { console.log("User doc check failed (likely new user)", e); }
 
-          if (!userSnap.exists()) {
+          if (!userExists) {
               console.log("Creating new user profile doc...");
               batch.set(userRef, {
                   user_id: user.uid,
@@ -75,9 +80,13 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
 
           // 2. Check Subscription
           const subRef = doc(db, 'subscriptions', user.uid);
-          const subSnap = await getDoc(subRef);
+          let subExists = false;
+          try {
+              const subSnap = await getDoc(subRef);
+              subExists = subSnap.exists();
+          } catch (e) { console.log("Sub doc check failed (likely new user)", e); }
 
-          if (!subSnap.exists()) {
+          if (!subExists) {
               console.log("Creating new subscription doc...");
               batch.set(subRef, {
                   user_id: user.uid,
