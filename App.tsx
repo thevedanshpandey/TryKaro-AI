@@ -334,11 +334,11 @@ const App: React.FC = () => {
             <VerifyEmail 
                 user={user} 
                 onSignOut={() => signOut(auth)} 
-                onCheckVerified={() => {
+                onCheckVerified={(silent) => {
                     user.reload().then(() => {
                         if (user.emailVerified) {
                             setShowVerifyModal(false);
-                        } else {
+                        } else if (!silent) {
                             alert("Email not verified yet. Check your inbox!");
                         }
                     });

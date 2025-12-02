@@ -1,12 +1,12 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, sendEmailVerification, auth } from '../firebaseConfig';
 import { Button } from './Button';
 
 interface Props {
   user: User;
   onSignOut: () => void;
-  onCheckVerified: () => void;
+  onCheckVerified: (silent?: boolean) => void;
   onSkip?: () => void;
 }
 
@@ -15,6 +15,22 @@ export const VerifyEmail: React.FC<Props> = ({ user, onSignOut, onCheckVerified,
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showDomainHelp, setShowDomainHelp] = useState(false);
+
+  // Auto-poll verification status every 3 seconds
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+        try {
+            await user.reload();
+            if (user.emailVerified) {
+                onCheckVerified(true); // Silent check
+            }
+        } catch (e) {
+            console.log("Polling error:", e);
+        }
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [user, onCheckVerified]);
 
   const handleSendEmail = async () => {
       setLoading(true);
@@ -27,13 +43,18 @@ export const VerifyEmail: React.FC<Props> = ({ user, onSignOut, onCheckVerified,
           if (!currentUser) {
               throw new Error("User session expired. Please log in again.");
           }
-          await sendEmailVerification(currentUser);
+          const actionCodeSettings = {
+                url: window.location.origin,
+                handleCodeInApp: true,
+          };
+          await sendEmailVerification(currentUser, actionCodeSettings);
           setEmailSent(true);
       } catch (e: any) {
           console.error("Email send error:", e);
           let msg = "Failed to send email.";
           
           if (e.code === 'auth/too-many-requests') msg = "Too many requests. Please wait a moment.";
+          if (e.code === 'auth/network-request-failed') msg = "Network error. Check connection.";
           
           if (e.code === 'auth/unauthorized-domain') {
               msg = "Domain unauthorized.";
@@ -95,14 +116,14 @@ export const VerifyEmail: React.FC<Props> = ({ user, onSignOut, onCheckVerified,
         )}
 
         <div className="space-y-4">
-             <Button fullWidth onClick={onCheckVerified}>
+             <Button fullWidth onClick={() => onCheckVerified(false)}>
                 I've Clicked the Link
              </Button>
              
              <div className="flex flex-col gap-2 pt-2">
                  <button 
                     onClick={handleSendEmail} 
-                    disabled={loading || emailSent}
+                    disabled={loading}
                     className="w-full py-2 text-sm text-gray-400 font-medium hover:text-white hover:underline disabled:opacity-50 transition-colors"
                  >
                     {loading ? 'Sending...' : 'Resend Link'}

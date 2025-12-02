@@ -159,9 +159,17 @@ const AuthScreen: React.FC<Props> = ({ onSuccess }) => {
 
         await initUserDB(user);
 
+        console.log("Waiting for user propogation...");
+        // SHORT DELAY: Ensures Firebase backend is ready for the email trigger
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
         console.log("Attempting to send verification email to:", user.email);
         try {
-            await sendEmailVerification(user);
+            const actionCodeSettings = {
+                url: window.location.origin, // Redirect back to app after verification
+                handleCodeInApp: true,
+            };
+            await sendEmailVerification(user, actionCodeSettings);
             console.log("Verification Email Sent Successfully!");
         } catch (emailError: any) {
             console.error("Verification Email FAILED:", emailError);
