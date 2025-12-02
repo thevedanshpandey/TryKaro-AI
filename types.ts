@@ -9,6 +9,7 @@ export enum View {
   DAILY_OUTFIT = 'DAILY_OUTFIT',
   PROFILE = 'PROFILE',
   PDF_WARDROBE = 'PDF_WARDROBE',
+  WEEKLY_PLANNER = 'WEEKLY_PLANNER',
 }
 
 export interface SavedWardrobeItem {
@@ -18,6 +19,14 @@ export interface SavedWardrobeItem {
   link: string;
   image_keyword?: string;
   timestamp: number;
+}
+
+export interface WeeklyPlanDay {
+  day: string; // "Monday", "Tuesday", etc.
+  outfitId: string | null; // ID of the SavedLook or WardrobeOutfit
+  outfitImage: string | null;
+  outfitName: string | null;
+  isWorn: boolean;
 }
 
 export interface UserProfile {
@@ -44,6 +53,10 @@ export interface UserProfile {
   savedLooks?: GeneratedLook[];
   wardrobeAnalysis?: PdfAnalysisResult | null;
   savedItems?: SavedWardrobeItem[];
+  
+  // Weekly Planner
+  weeklyPlan?: WeeklyPlanDay[];
+  notificationTime?: string; // e.g. "08:00"
 }
 
 export interface ClothingItem {

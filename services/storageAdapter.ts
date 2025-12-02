@@ -66,7 +66,10 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
             weight: profile.weight || '0',
             bodyShape: profile.bodyShape || '',
             skinTone: profile.skinTone || 10,
-            avatarImage: avatarId || null, 
+            avatarImage: avatarId || null,
+            // Save Weekly Plan & Notification Settings here
+            weeklyPlan: profile.weeklyPlan || [],
+            notificationTime: profile.notificationTime || null,
             updatedAt: Timestamp.now()
         }, { merge: true });
 
@@ -84,7 +87,7 @@ export const saveUserProfileToStorage = async (profile: UserProfile, userId: str
         }, { merge: true });
 
         await batch.commit();
-        console.log("✅ Core profile & subscription saved successfully.");
+        console.log("✅ Core profile, subscription & weekly plan saved.");
 
     } catch (e) {
         console.error("❌ CRITICAL SAVE ERROR (Core):", e);
@@ -291,6 +294,10 @@ export const loadUserProfileFromStorage = async (userId: string): Promise<UserPr
         bodyShape: userData.bodyShape || '',
         skinTone: userData.skinTone || 10,
         avatarImage: avatarImage,
+        
+        // Load Planner data
+        weeklyPlan: userData.weeklyPlan || [],
+        notificationTime: userData.notificationTime || null,
         
         planType: subData.planType || 'Free',
         priceTier: subData.priceTier ?? 0,

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, UserProfile, GeneratedLook, PdfAnalysisResult, SavedWardrobeItem } from './types';
+import { View, UserProfile, GeneratedLook, PdfAnalysisResult, SavedWardrobeItem, WeeklyPlanDay } from './types';
 import { Icons, AD_UNITS } from './constants';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { BannerAd, RewardedAd } from './components/AdComponents';
@@ -17,6 +17,7 @@ import DailyOutfit from './components/DailyOutfit';
 import Profile from './components/Profile';
 import PdfWardrobe from './components/PdfWardrobe';
 import SubscriptionScreen from './components/SubscriptionScreen';
+import { WeeklyPlanner } from './components/WeeklyPlanner';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -294,6 +295,13 @@ const App: React.FC = () => {
       saveUserProfileToStorage(updatedProfile, user.uid);
   };
 
+  const handleSaveWeeklyPlan = async (plan: WeeklyPlanDay[], time: string | undefined) => {
+      if (!userProfile || !user) return;
+      const updatedProfile = { ...userProfile, weeklyPlan: plan, notificationTime: time };
+      setUserProfile(updatedProfile);
+      await saveUserProfileToStorage(updatedProfile, user.uid);
+  };
+
   const handleAdReward = async () => {
       if (!userProfile || !user) return;
       const updatedProfile = { ...userProfile, tokens: userProfile.tokens + pendingTokenReward };
@@ -328,7 +336,6 @@ const App: React.FC = () => {
         return <LoadingOverlay message="Syncing..." />;
     }
 
-    // Only show verification modal if logic explicitly requested it AND user is NOT google verified
     if (showVerifyModal) {
         return (
             <VerifyEmail 
@@ -364,25 +371,26 @@ const App: React.FC = () => {
         const isPremium = userProfile?.planType === 'Monthly_299';
 
         return (
-          <div className="min-h-screen bg-black text-white font-sans overflow-x-hidden relative selection:bg-neon selection:text-white">
+          <div className="min-h-screen bg-black text-white font-sans overflow-x-hidden relative selection:bg-neon selection:text-white pb-20">
+             {/* Dynamic Background */}
              <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
-                <div className="absolute -top-20 -left-20 w-96 h-96 bg-neon/20 rounded-full blur-[128px] opacity-40 animate-pulse"></div>
-                <div className="absolute top-40 right-[-100px] w-72 h-72 bg-blue-600/20 rounded-full blur-[100px] opacity-30"></div>
-                <div className="absolute bottom-0 left-20 w-80 h-80 bg-purple-600/10 rounded-full blur-[100px] opacity-30"></div>
+                <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-neon/10 rounded-full blur-[130px] opacity-40 animate-pulse"></div>
+                <div className="absolute bottom-[0%] right-[-10%] w-[50%] h-[50%] bg-blue-600/10 rounded-full blur-[130px] opacity-40"></div>
              </div>
 
-             <div className="relative z-10 w-full max-w-5xl mx-auto p-5 pb-24 flex flex-col min-h-screen">
+             <div className="relative z-10 w-full max-w-5xl mx-auto p-5 flex flex-col min-h-screen">
                  
-                 <div className="flex justify-between items-center mb-6 pt-4 animate-in slide-in-from-top-4 duration-700">
+                 {/* Header & Avatar */}
+                 <div className="flex justify-between items-center mb-8 pt-4 animate-in slide-in-from-top-4 duration-700">
                    <div>
-                     <p className="text-gray-400 text-xs tracking-wider uppercase mb-1">Welcome back</p>
+                     <p className="text-gray-400 text-xs tracking-widest uppercase mb-1">Welcome back</p>
                      <h1 className="text-3xl font-bold text-white tracking-tight">
-                       Hello, <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon to-purple-400">{firstName}</span>
+                       Hey, <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon to-purple-400">{firstName}</span>
                      </h1>
                    </div>
                    <div 
                       onClick={() => setCurrentView(View.PROFILE)}
-                      className="w-12 h-12 rounded-full p-[2px] bg-gradient-to-tr from-neon to-blue-500 cursor-pointer hover:scale-105 transition-transform shadow-[0_0_20px_rgba(255,42,109,0.3)]"
+                      className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-neon via-purple-500 to-blue-500 cursor-pointer hover:scale-105 transition-transform shadow-[0_0_20px_rgba(255,42,109,0.3)]"
                    >
                      <div className="w-full h-full rounded-full overflow-hidden bg-black border-2 border-black">
                         {hasValidAvatar ? (
@@ -396,28 +404,29 @@ const App: React.FC = () => {
                    </div>
                  </div>
 
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                 {/* Stats / Plan Card */}
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                     <div 
                         className={`relative overflow-hidden p-6 rounded-3xl border transition-all duration-300 group
                                     ${isPremium 
-                                        ? 'bg-gradient-to-r from-gray-900 via-black to-gray-900 border-neon/50 shadow-[0_0_15px_rgba(255,42,109,0.1)]' 
+                                        ? 'bg-gradient-to-r from-gray-900 via-black to-gray-900 border-neon/50 shadow-[0_0_20px_rgba(255,42,109,0.15)]' 
                                         : 'bg-gradient-to-br from-[#1a1a1a]/90 to-black/90 border-white/10'
                                     }
-                                    hover:border-neon/60 hover:shadow-[0_0_25px_rgba(255,42,109,0.2)] hover:scale-[1.01] cursor-default
+                                    hover:border-neon/60 hover:scale-[1.01] cursor-default
                         `}
                     >
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-neon/10 transition-colors duration-500"></div>
+                        {isPremium && <div className="absolute top-0 right-0 w-64 h-64 bg-neon/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>}
                         
                         <div className="flex justify-between items-center relative z-10 h-full">
                             <div className="flex flex-col justify-center">
                                 <p className="text-gray-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
-                                    Current Plan 
-                                    {isPremium && <span className="text-neon bg-neon/10 px-2 py-0.5 rounded-full text-[8px] border border-neon/20">PRO</span>}
+                                    Status
+                                    {isPremium && <span className="text-black bg-neon px-2 py-0.5 rounded-full text-[9px] font-extrabold shadow-lg shadow-neon/50">PREMIUM</span>}
                                 </p>
                                 <h2 className="text-4xl font-black text-white flex items-baseline gap-2 tracking-tight">
                                     {userProfile?.planType === 'Free' ? userProfile.tokens : (userProfile?.planType === 'Monthly_299' ? '∞' : (userProfile?.tryOnLimit || 0) - (userProfile?.tryOnUsed || 0))}
                                     <span className="text-sm font-medium text-gray-400 self-end mb-1 ml-1">
-                                        {userProfile?.planType === 'Free' ? 'Tokens' : 'Try-Ons Left'}
+                                        {userProfile?.planType === 'Free' ? 'Tokens' : 'Credits'}
                                     </span>
                                 </h2>
                             </div>
@@ -425,116 +434,160 @@ const App: React.FC = () => {
                             {userProfile?.planType === 'Free' ? (
                                 <button 
                                     onClick={() => { setShowRewardedAd(true); setPendingTokenReward(10); }}
-                                    className="bg-white/10 text-white text-xs font-bold px-5 py-3 rounded-full hover:bg-neon hover:text-white transition-all border border-white/10 active:scale-95 flex items-center gap-2 backdrop-blur-sm group-hover:bg-white/20"
+                                    className="bg-white/10 text-white text-xs font-bold px-5 py-3 rounded-full hover:bg-neon hover:text-black hover:shadow-[0_0_15px_rgba(255,42,109,0.5)] transition-all border border-white/10 active:scale-95 flex items-center gap-2 backdrop-blur-sm"
                                 >
                                     <Icons.Video />
-                                    <span>+ Free Tokens</span>
+                                    <span>Earn +10</span>
                                 </button>
                             ) : (
-                                <div className="text-right">
-                                     <p className="text-xs text-gray-500 font-mono">RENEWAL</p>
-                                     <p className="text-sm text-white font-bold">Auto-Active</p>
+                                <div className="text-right opacity-80">
+                                     <p className="text-xs text-gray-500 font-mono">RENEWS AUTOMATICALLY</p>
                                 </div>
                             )}
                         </div>
                     </div>
                     
+                    {/* Only show banner on large screens or if not premium */}
                     {!isPremium && (
                         <div className="hidden md:block">
                             <BannerAd unitId={AD_UNITS.BANNER_HOME} />
                         </div>
                     )}
                  </div>
-
+                 
+                 {/* Mobile Banner */}
                  {!isPremium && (
-                     <div className="md:hidden">
+                     <div className="md:hidden mb-6">
                         <BannerAd unitId={AD_UNITS.BANNER_HOME} />
                      </div>
                  )}
 
-                 <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2">
-                    <span className="w-1 h-6 bg-neon rounded-full"></span>
-                    Studio
-                 </h3>
+                 <div className="flex items-center gap-3 mb-5">
+                    <span className="w-1.5 h-6 bg-gradient-to-b from-neon to-purple-600 rounded-full"></span>
+                    <h3 className="text-white font-bold text-xl tracking-tight">Your Studio</h3>
+                 </div>
                  
-                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                 {/* Dashboard Grid - Conditional Layout based on Plan */}
+                 <div className="grid grid-cols-2 md:grid-cols-12 gap-4">
                     
+                    {/* 1. Try-On Feature (Always prominent for free/mid, standard for Premium) */}
                     <div 
                       onClick={() => requestFeatureAccess(View.TRY_ON)}
-                      className="md:col-span-8 w-full min-h-[220px] bg-gradient-to-r from-gray-900 to-black rounded-3xl p-8 relative overflow-hidden cursor-pointer group border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.5)] hover:border-neon/50 transition-all duration-300 flex flex-col justify-between"
+                      className={`
+                        ${isPremium ? 'col-span-2 md:col-span-4' : 'col-span-2 md:col-span-8'}
+                        bg-gradient-to-br from-gray-900 to-black rounded-3xl p-6 relative overflow-hidden cursor-pointer group border border-white/10 shadow-lg hover:border-neon/50 transition-all duration-300 min-h-[200px] flex flex-col justify-between
+                      `}
                     >
-                        <div className="absolute inset-0 bg-gradient-to-br from-neon/20 via-transparent to-purple-600/10 opacity-60 group-hover:opacity-100 transition-opacity"></div>
-                        <div className="absolute right-0 top-0 w-40 h-40 bg-neon/20 blur-[80px] rounded-full"></div>
-
-                        <div className="relative z-10 h-full flex flex-col justify-between">
-                            <div className="flex justify-between items-start">
-                                <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl text-neon border border-neon/20 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                                    <Icons.Camera />
-                                </div>
-                                <span className="text-[10px] font-bold bg-neon text-black px-2 py-1 rounded-full uppercase tracking-wider">
-                                    Featured
-                                </span>
+                        <div className="absolute right-0 top-0 w-32 h-32 bg-neon/10 blur-[60px] rounded-full group-hover:bg-neon/20 transition-all"></div>
+                        <div className="relative z-10 flex justify-between items-start">
+                            <div className="w-12 h-12 bg-gray-800/80 backdrop-blur-md rounded-2xl flex items-center justify-center text-neon border border-white/10 group-hover:scale-110 transition-transform shadow-lg shadow-black/50">
+                                <Icons.Camera />
                             </div>
-                            <div className="mt-8">
-                                <h2 className="text-3xl font-bold text-white mb-2 leading-none group-hover:text-neon transition-colors">Virtual Try-On</h2>
-                                <p className="text-gray-400 text-sm max-w-xs">Instantly visualize yourself in any outfit.</p>
-                            </div>
+                        </div>
+                        <div className="relative z-10">
+                            <h2 className="text-xl font-bold text-white mb-1 group-hover:text-neon transition-colors">Virtual Try-On</h2>
+                            <p className="text-xs text-gray-400">Visualize any outfit instantly.</p>
                         </div>
                     </div>
 
-                    <div className="md:col-span-4 grid grid-cols-2 md:grid-cols-1 gap-4">
-                        <div 
-                          onClick={() => requestFeatureAccess(View.WARDROBE)}
-                          className={`bg-gray-900/60 backdrop-blur-md p-5 rounded-3xl border border-white/5 cursor-pointer hover:border-blue-500/50 transition-all group relative overflow-hidden min-h-[160px] flex flex-col justify-between ${!userProfile?.hasPremiumFeatures ? 'opacity-70 grayscale-[0.5]' : ''}`}
-                        >
-                            {!userProfile?.hasPremiumFeatures && <div className="absolute top-2 right-2 text-xl">🔒</div>}
-                            <div className="absolute -right-4 -top-4 w-20 h-20 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition-all"></div>
-                            
-                            <div className="w-10 h-10 bg-gray-800/80 rounded-xl flex items-center justify-center text-blue-400 border border-white/5 mb-2 group-hover:scale-110 transition-transform">
-                                <Icons.Upload />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-white text-md leading-tight group-hover:text-blue-400 transition-colors">Create My<br/>Wardrobe</h3>
-                                <p className="text-[10px] text-gray-400 mt-1">Digitize & Organize</p>
-                            </div>
+                    {/* 2. Wardrobe (Highlighted for Premium) */}
+                    <div 
+                      onClick={() => requestFeatureAccess(View.WARDROBE)}
+                      className={`
+                        ${isPremium ? 'col-span-1 md:col-span-4 bg-gradient-to-b from-blue-900/40 to-black border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.15)]' : 'col-span-1 md:col-span-2 bg-gray-900/60 border-white/5'}
+                        backdrop-blur-md p-5 rounded-3xl border cursor-pointer hover:border-blue-400 transition-all group relative overflow-hidden min-h-[180px] flex flex-col justify-between
+                        ${!userProfile?.hasPremiumFeatures ? 'opacity-70 grayscale-[0.5]' : ''}
+                      `}
+                    >
+                        {!userProfile?.hasPremiumFeatures && <div className="absolute top-3 right-3 text-lg z-20">🔒</div>}
+                        {isPremium && <div className="absolute top-3 right-3 text-[9px] bg-blue-500 text-white px-2 py-0.5 rounded-full font-bold z-20">PRO</div>}
+                        
+                        <div className="absolute -right-10 -bottom-10 w-32 h-32 bg-blue-600/20 rounded-full blur-2xl group-hover:bg-blue-600/30 transition-all"></div>
+                        
+                        <div className="w-10 h-10 bg-gray-800/80 rounded-xl flex items-center justify-center text-blue-400 border border-white/5 group-hover:scale-110 transition-transform">
+                            <Icons.Upload />
                         </div>
-
-                        <div 
-                          onClick={() => requestFeatureAccess(View.DAILY_OUTFIT)}
-                          className={`bg-gray-900/60 backdrop-blur-md p-5 rounded-3xl border border-white/5 cursor-pointer hover:border-purple-500/50 transition-all group relative overflow-hidden min-h-[160px] flex flex-col justify-between ${!userProfile?.hasPremiumFeatures ? 'opacity-70 grayscale-[0.5]' : ''}`}
-                        >
-                            {!userProfile?.hasPremiumFeatures && <div className="absolute top-2 right-2 text-xl">🔒</div>}
-                            <div className="absolute -right-4 -top-4 w-20 h-20 bg-purple-500/10 rounded-full blur-xl group-hover:bg-purple-500/20 transition-all"></div>
-                            
-                            <div className="w-10 h-10 bg-gray-800/80 rounded-xl flex items-center justify-center text-purple-400 border border-white/5 mb-2 group-hover:scale-110 transition-transform">
-                                <Icons.Sparkles />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-white text-md leading-tight group-hover:text-purple-400 transition-colors">Daily<br/>Outfit</h3>
-                                <p className="text-[10px] text-gray-400 mt-1">What to wear today?</p>
-                            </div>
+                        <div>
+                            <h3 className={`font-bold text-white leading-tight group-hover:text-blue-400 transition-colors ${isPremium ? 'text-lg' : 'text-sm'}`}>
+                                My<br/>Wardrobe
+                            </h3>
+                            <p className="text-[10px] text-gray-400 mt-1 line-clamp-2">Digitize & AI Analyze</p>
                         </div>
                     </div>
 
+                    {/* 3. Daily Outfit (Highlighted for Premium) */}
+                    <div 
+                      onClick={() => requestFeatureAccess(View.DAILY_OUTFIT)}
+                      className={`
+                        ${isPremium ? 'col-span-1 md:col-span-4 bg-gradient-to-b from-purple-900/40 to-black border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]' : 'col-span-1 md:col-span-2 bg-gray-900/60 border-white/5'}
+                        backdrop-blur-md p-5 rounded-3xl border cursor-pointer hover:border-purple-400 transition-all group relative overflow-hidden min-h-[180px] flex flex-col justify-between
+                        ${!userProfile?.hasPremiumFeatures ? 'opacity-70 grayscale-[0.5]' : ''}
+                      `}
+                    >
+                        {!userProfile?.hasPremiumFeatures && <div className="absolute top-3 right-3 text-lg z-20">🔒</div>}
+                        {isPremium && <div className="absolute top-3 right-3 text-[9px] bg-purple-500 text-white px-2 py-0.5 rounded-full font-bold z-20">PRO</div>}
+
+                        <div className="absolute -right-10 -top-10 w-32 h-32 bg-purple-600/20 rounded-full blur-2xl group-hover:bg-purple-600/30 transition-all"></div>
+                        
+                        <div className="w-10 h-10 bg-gray-800/80 rounded-xl flex items-center justify-center text-purple-400 border border-white/5 group-hover:scale-110 transition-transform">
+                            <Icons.Sparkles />
+                        </div>
+                        <div>
+                            <h3 className={`font-bold text-white leading-tight group-hover:text-purple-400 transition-colors ${isPremium ? 'text-lg' : 'text-sm'}`}>
+                                Daily<br/>Outfit
+                            </h3>
+                            <p className="text-[10px] text-gray-400 mt-1 line-clamp-2">AI Styling Advice</p>
+                        </div>
+                    </div>
+
+                    {/* 4. NEW: Weekly Planner (Available to Premium) */}
+                    <div 
+                        onClick={() => requestFeatureAccess(View.WEEKLY_PLANNER)}
+                        className={`
+                            ${isPremium ? 'col-span-2 md:col-span-6' : 'col-span-2 md:col-span-12'}
+                            bg-gray-900/40 backdrop-blur-md p-5 rounded-3xl border border-white/5 cursor-pointer hover:border-green-400/50 transition-all group relative overflow-hidden flex items-center justify-between
+                            ${!userProfile?.hasPremiumFeatures ? 'opacity-70 grayscale-[0.5]' : ''}
+                        `}
+                    >
+                         {!userProfile?.hasPremiumFeatures && <div className="absolute top-4 right-4 text-xl">🔒</div>}
+                         <div className="absolute left-0 bottom-0 w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent opacity-50"></div>
+                         
+                         <div className="flex items-center gap-4">
+                             <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center text-green-400 border border-white/5 group-hover:scale-110 transition-transform">
+                                 <Icons.Calendar />
+                             </div>
+                             <div>
+                                 <h3 className="font-bold text-white text-lg group-hover:text-green-400 transition-colors">Weekly Planner</h3>
+                                 <p className="text-xs text-gray-400">Plan outfits Mon-Sun & Get Reminders</p>
+                             </div>
+                         </div>
+                         <div className="bg-white/5 p-2 rounded-full hidden sm:block">
+                             <span className="text-xl">📅</span>
+                         </div>
+                    </div>
+
+                    {/* 5. Smart Shopper / Mix Match */}
                     <div 
                         onClick={() => requestFeatureAccess(View.MIX_MATCH)}
-                        className={`md:col-span-12 bg-gradient-to-r from-gray-900 to-[#0a1f0a] backdrop-blur-md p-6 rounded-3xl border border-white/5 cursor-pointer hover:border-green-500/50 transition-all group relative overflow-hidden flex items-center justify-between ${!userProfile?.hasPremiumFeatures ? 'opacity-70 grayscale-[0.5]' : ''}`}
+                        className={`
+                             ${isPremium ? 'col-span-2 md:col-span-6' : 'col-span-2 md:col-span-12'}
+                             bg-gray-900/40 backdrop-blur-md p-5 rounded-3xl border border-white/5 cursor-pointer hover:border-yellow-400/50 transition-all group relative overflow-hidden flex items-center justify-between
+                             ${!userProfile?.hasPremiumFeatures ? 'opacity-70 grayscale-[0.5]' : ''}
+                        `}
                     >
                         {!userProfile?.hasPremiumFeatures && <div className="absolute top-4 right-4 text-xl">🔒</div>}
-                        <div className="absolute left-0 top-0 w-full h-full bg-green-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                        <div className="relative z-10 flex items-center gap-4">
-                            <div className="w-14 h-14 bg-gray-800/80 rounded-xl flex items-center justify-center text-green-400 border border-white/5 group-hover:scale-110 transition-transform">
+                        
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center text-yellow-400 border border-white/5 group-hover:scale-110 transition-transform">
                                 <Icons.Shirt />
                             </div>
                             <div>
-                                <h3 className="font-bold text-white text-xl group-hover:text-green-400 transition-colors">Smart Shopper</h3>
-                                <p className="text-xs text-gray-400">Build your perfect wardrobe plan within your budget</p>
+                                <h3 className="font-bold text-white text-lg group-hover:text-yellow-400 transition-colors">Smart Shopper</h3>
+                                <p className="text-xs text-gray-400">Build a budget wardrobe plan</p>
                             </div>
                         </div>
-                        <div className="bg-white/5 p-3 rounded-full text-gray-400 group-hover:text-white group-hover:bg-white/10 transition-all">
-                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-                        </div>
                     </div>
+
                  </div>
 
              </div>
@@ -563,6 +616,8 @@ const App: React.FC = () => {
         return <WardrobeBuilder onBack={() => setCurrentView(View.HOME)} onSaveItem={handleSaveWardrobeItem} />;
       case View.DAILY_OUTFIT:
         return <DailyOutfit user={userProfile!} onBack={() => setCurrentView(View.HOME)} onCreateWardrobe={() => setCurrentView(View.WARDROBE)} onSaveLook={handleSaveLook} />;
+      case View.WEEKLY_PLANNER:
+        return <WeeklyPlanner user={userProfile!} onBack={() => setCurrentView(View.HOME)} onSavePlan={handleSaveWeeklyPlan} />;
       case View.PROFILE:
         return <Profile 
                   user={userProfile!} 
